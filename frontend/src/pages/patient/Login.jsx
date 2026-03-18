@@ -40,7 +40,7 @@ export default function PatientLoginPage() {
             <div className="w-10 h-10 bg-[#2563EB] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <span className="text-xl font-semibold text-[#0F172A]">MediCore</span>
+            <span className="text-xl font-semibold text-[#0F172A]">medflow</span>
           </Link>
           <h1 className="text-2xl font-semibold text-[#0F172A]">Patient Portal</h1>
           <p className="text-[#64748B] mt-1">Sign in to access your health records</p>

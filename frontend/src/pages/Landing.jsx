@@ -12,7 +12,7 @@ export default function Home() {
             <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <span className="text-2xl font-bold text-[#0F172A]">MediCore</span>
+            <span className="text-2xl font-bold text-[#0F172A]">medflow</span>
           </div>
           <h1 className="text-3xl font-bold text-[#0F172A] mb-2">Hospital Management System</h1>
           <p className="text-[#64748B]">Select your dashboard to continue</p>
