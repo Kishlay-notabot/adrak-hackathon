@@ -1,8 +1,8 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Patient } = require("../models");
-const { auth, requireRole } = require("../middleware/auth");
+const { Patient } = require("./models");
+const { auth, requireRole } = require("./auth");
 
 const signToken = (patient) =>
   jwt.sign({ id: patient._id, role: "patient" }, process.env.JWT_SECRET, { expiresIn: "7d" });

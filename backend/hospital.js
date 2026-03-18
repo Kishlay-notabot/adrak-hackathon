@@ -1,6 +1,6 @@
 const router = require("express").Router();
-const { Hospital, PatientInflow } = require("../models");
-const { auth, requireRole } = require("../middleware/auth");
+const { Hospital, PatientInflow } = require("./models");
+const { auth, requireRole } = require("./auth");
 
 // ── GET /api/hospital/mine ──────────────────────────────────────────
 // Admin views their own hospital dashboard data

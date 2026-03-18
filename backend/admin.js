@@ -1,8 +1,8 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Admin, Hospital } = require("../models");
-const { auth, requireRole } = require("../middleware/auth");
+const { Admin, Hospital } = require("./models");
+const { auth, requireRole } = require("./auth");
 
 const signToken = (admin) =>
   jwt.sign(
