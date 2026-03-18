@@ -1,3 +1,4 @@
+// frontend/src/pages/patient/Dashboard.jsx
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { PatientNavbar } from "@/components/patient/navbar"
@@ -6,12 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Calendar, Stethoscope, Clock, Download, Printer } from "lucide-react"
 import { api, isLoggedIn, getRole, getUser } from "@/lib/api"
+import { QRCodeCanvas, downloadQR, printQR, useQRCodeDataURL } from "@/components/qr-code"
 
 export default function PatientDashboard() {
   const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const localUser = getUser()
+
+  const qrValue = localUser?.id || ""
+  const qrDataUrl = useQRCodeDataURL(qrValue)
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -63,7 +68,6 @@ export default function PatientDashboard() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden ml-60">
         <PatientNavbar title="My Dashboard" />
         <main className="flex-1 overflow-auto p-6">
-          {/* Welcome card */}
           <Card className="bg-gradient-to-r from-[#F8FAFC] to-[#F1F5F9] border-[#E2E8F0] mb-6">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -79,7 +83,6 @@ export default function PatientDashboard() {
             </CardContent>
           </Card>
 
-          {/* Info cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <Card className="bg-white border-[#E2E8F0] shadow-sm">
               <CardContent className="p-6">
@@ -128,35 +131,29 @@ export default function PatientDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* QR Code */}
             <Card className="bg-white border-[#E2E8F0] shadow-sm border-l-4 border-l-[#2563EB]">
               <CardContent className="p-6 text-center">
-                <div className="w-48 h-48 mx-auto bg-[#F8FAFC] rounded-lg p-4 mb-4 flex items-center justify-center">
-                  <svg viewBox="0 0 100 100" className="w-full h-full">
-                    <rect x="10" y="10" width="20" height="20" fill="#0F172A" />
-                    <rect x="35" y="10" width="10" height="10" fill="#0F172A" />
-                    <rect x="50" y="10" width="10" height="10" fill="#0F172A" />
-                    <rect x="70" y="10" width="20" height="20" fill="#0F172A" />
-                    <rect x="10" y="35" width="10" height="10" fill="#0F172A" />
-                    <rect x="30" y="35" width="15" height="15" fill="#0F172A" />
-                    <rect x="55" y="35" width="10" height="10" fill="#0F172A" />
-                    <rect x="80" y="35" width="10" height="10" fill="#0F172A" />
-                    <rect x="10" y="55" width="10" height="10" fill="#0F172A" />
-                    <rect x="35" y="55" width="30" height="10" fill="#0F172A" />
-                    <rect x="80" y="55" width="10" height="10" fill="#0F172A" />
-                    <rect x="10" y="70" width="20" height="20" fill="#0F172A" />
-                    <rect x="40" y="75" width="10" height="10" fill="#0F172A" />
-                    <rect x="60" y="70" width="10" height="15" fill="#0F172A" />
-                    <rect x="80" y="75" width="10" height="15" fill="#0F172A" />
-                  </svg>
+                <div className="w-48 h-48 mx-auto bg-[#F8FAFC] rounded-lg p-3 mb-4 flex items-center justify-center">
+                  {qrValue ? (
+                    <QRCodeCanvas value={qrValue} size={168} />
+                  ) : (
+                    <p className="text-sm text-[#64748B]">No QR available</p>
+                  )}
                 </div>
                 <p className="text-lg font-bold text-[#0F172A] mb-1">{p.name || "-"}</p>
                 <p className="text-sm text-[#64748B] mb-6">{p.pid || "-"}</p>
                 <div className="flex items-center justify-center gap-3">
-                  <Button variant="outline" className="border-[#E2E8F0] text-[#0F172A]">
+                  <Button
+                    variant="outline"
+                    className="border-[#E2E8F0] text-[#0F172A]"
+                    onClick={() => downloadQR(qrDataUrl, `QR-${p.pid || "patient"}.png`)}
+                  >
                     <Download className="w-4 h-4 mr-2" />Download QR
                   </Button>
-                  <Button className="bg-black hover:bg-black/90 text-white">
+                  <Button
+                    className="bg-black hover:bg-black/90 text-white"
+                    onClick={() => printQR(qrDataUrl, p.name, p.pid)}
+                  >
                     <Printer className="w-4 h-4 mr-2" />Print QR
                   </Button>
                 </div>
@@ -166,7 +163,6 @@ export default function PatientDashboard() {
               </CardContent>
             </Card>
 
-            {/* Profile */}
             <Card className="bg-white border-[#E2E8F0] shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg font-semibold text-[#0F172A]">My Profile</CardTitle>
@@ -193,7 +189,6 @@ export default function PatientDashboard() {
             </Card>
           </div>
 
-          {/* Recent Visits */}
           <Card className="bg-white border-[#E2E8F0] shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-[#0F172A]">Recent Visits</CardTitle>

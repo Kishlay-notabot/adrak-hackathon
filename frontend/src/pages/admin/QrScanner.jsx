@@ -1,20 +1,37 @@
-import { useState } from "react"
+// frontend/src/pages/admin/QrScanner.jsx
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { AdminNavbar } from "@/components/admin/navbar"
 import { AdminSidebar } from "@/components/admin/sidebar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "@/lib/api"
+import { Label } from "@/components/ui/label"
+import { QRCodeCanvas } from "@/components/qr-code"
+import { api, isLoggedIn, getRole } from "@/lib/api"
 
 export default function QRScannerPage() {
+  const navigate = useNavigate()
   const [scanned, setScanned] = useState(false)
   const [patient, setPatient] = useState(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [manualId, setManualId] = useState("")
 
-  // In production this would use a camera QR library.
-  // For now, admin types or pastes the patient ObjectId.
+  const [showRemarkForm, setShowRemarkForm] = useState(false)
+  const [remarkForm, setRemarkForm] = useState({ note: "", diagnosis: "", urgency: "low" })
+  const [remarkLoading, setRemarkLoading] = useState(false)
+  const [remarkSuccess, setRemarkSuccess] = useState("")
+
+  const [showAdmitForm, setShowAdmitForm] = useState(false)
+  const [admitForm, setAdmitForm] = useState({ doctor: "", ward: "", reason: "" })
+  const [admitLoading, setAdmitLoading] = useState(false)
+  const [admitSuccess, setAdmitSuccess] = useState("")
+
+  useEffect(() => {
+    if (!isLoggedIn() || getRole() !== "admin") navigate("/admin/login")
+  }, [])
+
   const handleLookup = async (patientId) => {
     if (!patientId) return
     setError("")
@@ -35,6 +52,48 @@ export default function QRScannerPage() {
     setPatient(null)
     setError("")
     setManualId("")
+    setShowRemarkForm(false)
+    setShowAdmitForm(false)
+    setRemarkSuccess("")
+    setAdmitSuccess("")
+  }
+
+  const handleAddRemark = async (e) => {
+    e.preventDefault()
+    setRemarkLoading(true)
+    try {
+      await api(`/patient/${patient._id}/remarks`, {
+        method: "POST",
+        body: JSON.stringify(remarkForm),
+      })
+      setRemarkSuccess("Remark added successfully!")
+      setRemarkForm({ note: "", diagnosis: "", urgency: "low" })
+      setShowRemarkForm(false)
+      const updated = await api(`/patient/${patient._id}`)
+      setPatient(updated)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRemarkLoading(false)
+    }
+  }
+
+  const handleAdmit = async (e) => {
+    e.preventDefault()
+    setAdmitLoading(true)
+    try {
+      await api("/admission", {
+        method: "POST",
+        body: JSON.stringify({ patientId: patient._id, ...admitForm }),
+      })
+      setAdmitSuccess("Patient admitted successfully!")
+      setAdmitForm({ doctor: "", ward: "", reason: "" })
+      setShowAdmitForm(false)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setAdmitLoading(false)
+    }
   }
 
   return (
@@ -42,15 +101,13 @@ export default function QRScannerPage() {
       <AdminSidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden ml-60">
         <AdminNavbar title="QR Scanner" />
-        <main className="p-6">
+        <main className="flex-1 overflow-auto p-6">
           <Card className="bg-white border-[#E2E8F0] shadow-sm max-w-2xl mx-auto">
             <CardContent className="p-8">
               {!scanned ? (
                 <div className="flex flex-col items-center">
                   <h2 className="text-xl font-semibold text-[#0F172A] mb-6">Scan Patient QR Code</h2>
-                  <div
-                    className="relative w-72 h-72 bg-[#0F172A] rounded-xl flex items-center justify-center mb-6"
-                  >
+                  <div className="relative w-72 h-72 bg-[#0F172A] rounded-xl flex items-center justify-center mb-6">
                     <div className="absolute top-4 left-4 w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
                     <div className="absolute top-4 right-4 w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
                     <div className="absolute bottom-4 left-4 w-10 h-10 border-l-4 border-b-4 border-white rounded-bl-lg" />
@@ -58,9 +115,12 @@ export default function QRScannerPage() {
                     <div className="w-56 h-0.5 bg-white/50 animate-pulse" />
                   </div>
 
-                  <p className="text-[#64748B] text-sm mb-4">Or enter Patient ID manually:</p>
+                  <p className="text-[#64748B] text-sm mb-4">Enter Patient ID manually:</p>
+                  <p className="text-xs text-[#64748B] mb-3">
+                    The patient's QR code encodes their ID. Ask the patient to show their QR from the MediCore app.
+                  </p>
 
-                  <div className="flex gap-2 w-full max-w-xs">
+                  <div className="flex gap-2 w-full max-w-sm">
                     <Input
                       placeholder="Paste patient ObjectId..."
                       value={manualId}
@@ -76,9 +136,7 @@ export default function QRScannerPage() {
                     </Button>
                   </div>
 
-                  {error && (
-                    <p className="text-red-600 text-sm mt-4">{error}</p>
-                  )}
+                  {error && <p className="text-red-600 text-sm mt-4">{error}</p>}
                 </div>
               ) : (
                 <div>
@@ -88,50 +146,65 @@ export default function QRScannerPage() {
                       Scan Another
                     </Button>
                   </div>
+
+                  {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">{error}</div>}
+                  {remarkSuccess && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-md">{remarkSuccess}</div>}
+                  {admitSuccess && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-md">{admitSuccess}</div>}
+
                   {patient && (
                     <div className="space-y-5">
-                      <div>
-                        <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Full Name</p>
-                        <p className="text-base font-medium text-[#0F172A]">{patient.name}</p>
+                      <div className="flex gap-6">
+                        <div className="flex-1 space-y-4">
+                          <div>
+                            <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Full Name</p>
+                            <p className="text-base font-medium text-[#0F172A]">{patient.name}</p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">PID</p>
+                              <p className="text-sm font-medium text-[#0F172A]">{patient.pid}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Age</p>
+                              <p className="text-sm font-medium text-[#0F172A]">{patient.age || "-"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Gender</p>
+                              <p className="text-sm font-medium text-[#0F172A] capitalize">{patient.gender || "-"}</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Blood Group</p>
+                              <p className="text-sm font-medium text-[#0F172A]">{patient.bloodGroup || "-"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Phone</p>
+                              <p className="text-sm font-medium text-[#0F172A]">{patient.phone || "-"}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <div className="w-28 h-28 bg-[#F1F5F9] rounded-lg p-2 flex items-center justify-center">
+                            <QRCodeCanvas value={patient._id} size={96} />
+                          </div>
+                          <p className="text-xs text-[#64748B] text-center mt-2">{patient.pid}</p>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">PID</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.pid}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Age</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.age || "-"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Gender</p>
-                          <p className="text-base font-medium text-[#0F172A] capitalize">{patient.gender || "-"}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Blood Group</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.bloodGroup || "-"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Phone</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.phone || "-"}</p>
-                        </div>
-                      </div>
+
                       {patient.allergies?.length > 0 && (
                         <div>
                           <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Allergies</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.allergies.join(", ")}</p>
+                          <p className="text-sm font-medium text-[#0F172A]">{patient.allergies.join(", ")}</p>
                         </div>
                       )}
                       {patient.medicalConditions?.length > 0 && (
                         <div>
                           <p className="text-xs text-[#64748B] uppercase tracking-wide mb-1">Medical Conditions</p>
-                          <p className="text-base font-medium text-[#0F172A]">{patient.medicalConditions.join(", ")}</p>
+                          <p className="text-sm font-medium text-[#0F172A]">{patient.medicalConditions.join(", ")}</p>
                         </div>
                       )}
 
-                      {/* Remarks from other hospitals */}
                       {patient.remarks?.length > 0 && (
                         <div>
                           <p className="text-xs text-[#64748B] uppercase tracking-wide mb-2">Transfer Remarks</p>
@@ -139,9 +212,7 @@ export default function QRScannerPage() {
                             {patient.remarks.map((r, i) => (
                               <div key={i} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
                                 <div className="flex justify-between mb-1">
-                                  <span className="text-sm font-medium text-[#0F172A]">
-                                    {r.hospitalId?.name || "Unknown Hospital"}
-                                  </span>
+                                  <span className="text-sm font-medium text-[#0F172A]">{r.hospitalId?.name || "Unknown Hospital"}</span>
                                   <span className={`text-xs px-2 py-0.5 rounded capitalize ${
                                     r.urgency === "critical" ? "bg-red-100 text-red-700" :
                                     r.urgency === "high" ? "bg-orange-100 text-orange-700" :
@@ -155,6 +226,78 @@ export default function QRScannerPage() {
                             ))}
                           </div>
                         </div>
+                      )}
+
+                      <div className="flex gap-3 pt-2">
+                        <Button className="flex-1 bg-black hover:bg-black/90 text-white" onClick={() => { setShowAdmitForm(true); setShowRemarkForm(false) }}>
+                          Admit Patient
+                        </Button>
+                        <Button variant="outline" className="flex-1 border-[#E2E8F0]" onClick={() => { setShowRemarkForm(true); setShowAdmitForm(false) }}>
+                          Add Remark
+                        </Button>
+                      </div>
+
+                      {showAdmitForm && (
+                        <form onSubmit={handleAdmit} className="p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] space-y-3">
+                          <p className="text-sm font-medium text-[#0F172A]">Admit Patient</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Doctor</Label>
+                              <Input placeholder="Dr. Smith" value={admitForm.doctor}
+                                onChange={(e) => setAdmitForm({ ...admitForm, doctor: e.target.value })}
+                                className="h-9 border-[#E2E8F0]" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Ward</Label>
+                              <Input placeholder="General / ICU" value={admitForm.ward}
+                                onChange={(e) => setAdmitForm({ ...admitForm, ward: e.target.value })}
+                                className="h-9 border-[#E2E8F0]" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Reason</Label>
+                            <Input placeholder="Reason for admission" value={admitForm.reason}
+                              onChange={(e) => setAdmitForm({ ...admitForm, reason: e.target.value })}
+                              className="h-9 border-[#E2E8F0]" />
+                          </div>
+                          <Button type="submit" disabled={admitLoading} className="w-full bg-black hover:bg-black/90 text-white h-9">
+                            {admitLoading ? "Admitting..." : "Confirm Admission"}
+                          </Button>
+                        </form>
+                      )}
+
+                      {showRemarkForm && (
+                        <form onSubmit={handleAddRemark} className="p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] space-y-3">
+                          <p className="text-sm font-medium text-[#0F172A]">Add Remark</p>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Note</Label>
+                            <Input placeholder="Clinical notes..." value={remarkForm.note}
+                              onChange={(e) => setRemarkForm({ ...remarkForm, note: e.target.value })}
+                              className="h-9 border-[#E2E8F0]" required />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Diagnosis</Label>
+                              <Input placeholder="Optional" value={remarkForm.diagnosis}
+                                onChange={(e) => setRemarkForm({ ...remarkForm, diagnosis: e.target.value })}
+                                className="h-9 border-[#E2E8F0]" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Urgency</Label>
+                              <select value={remarkForm.urgency}
+                                onChange={(e) => setRemarkForm({ ...remarkForm, urgency: e.target.value })}
+                                className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm">
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                              </select>
+                            </div>
+                          </div>
+                          <Button type="submit" disabled={remarkLoading} className="w-full bg-black hover:bg-black/90 text-white h-9">
+                            {remarkLoading ? "Saving..." : "Save Remark"}
+                          </Button>
+                        </form>
                       )}
                     </div>
                   )}
