@@ -44,7 +44,7 @@ export function AdminSidebar() {
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">M</span>
           </div>
-          <span className="font-bold text-lg text-[#0F172A]">mediflow</span>
+          <span className="font-bold text-lg text-[#0F172A]">medflow</span>
         </Link>
       </div>
 
@@ -112,7 +112,7 @@ export function AdminSidebar() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-[#0F172A] truncate">{user?.name || "Admin User"}</p>
-            <p className="text-xs text-[#64748B] truncate">{user?.email || "admin@mediflow.com"}</p>
+            <p className="text-xs text-[#64748B] truncate">{user?.email || "admin@medflow.com"}</p>
           </div>
           <button onClick={handleLogout} className="text-[#64748B] hover:text-red-600" title="Logout">
             <LogOut className="w-5 h-5" />

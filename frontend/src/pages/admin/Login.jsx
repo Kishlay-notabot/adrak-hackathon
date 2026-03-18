@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
             <div className="w-10 h-10 bg-[#0F172A] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <span className="text-xl font-semibold text-[#0F172A]">mediflow</span>
+            <span className="text-xl font-semibold text-[#0F172A]">medflow</span>
           </Link>
           <h1 className="text-2xl font-semibold text-[#0F172A]">Admin Portal</h1>
           <p className="text-[#64748B] mt-1">Sign in to access the admin dashboard</p>
@@ -63,7 +63,7 @@ export default function AdminLoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@mediflow.com"
+                  placeholder="admin@medflow.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="h-11 border-[#E2E8F0]"
