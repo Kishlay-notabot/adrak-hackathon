@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -7,9 +7,10 @@ import {
   QrCode,
   Calendar,
   FileText,
-  MoreVertical,
+  LogOut,
   Headphones,
 } from "lucide-react"
+import { getUser, logout } from "@/lib/api"
 
 const navItems = [
   { href: "/patient/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -21,7 +22,15 @@ const navItems = [
 
 export function PatientSidebar() {
   const location = useLocation()
+  const navigate = useNavigate()
   const pathname = location.pathname
+  const user = getUser()
+  const initials = user?.name ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "PT"
+
+  const handleLogout = () => {
+    logout()
+    navigate("/patient/login")
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-60 bg-white border-r border-[#E2E8F0] flex flex-col z-10">
@@ -68,14 +77,14 @@ export function PatientSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="w-9 h-9">
             <AvatarImage src="/placeholder-avatar.jpg" alt="Patient" />
-            <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] text-sm">PT</AvatarFallback>
+            <AvatarFallback className="bg-[#F1F5F9] text-[#0F172A] text-sm">{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-[#0F172A] truncate">John Doe</p>
-            <p className="text-xs text-[#64748B] truncate">#PID-00421</p>
+            <p className="text-sm font-medium text-[#0F172A] truncate">{user?.name || "Patient"}</p>
+            <p className="text-xs text-[#64748B] truncate">#{user?.pid || "..."}</p>
           </div>
-          <button className="text-[#64748B] hover:text-[#0F172A]">
-            <MoreVertical className="w-5 h-5" />
+          <button onClick={handleLogout} className="text-[#64748B] hover:text-red-600" title="Logout">
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </div>

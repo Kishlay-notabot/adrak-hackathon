@@ -5,15 +5,31 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Eye, EyeOff } from "lucide-react"
+import { api, setAuth } from "@/lib/api"
 
 export default function PatientLoginPage() {
   const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({ email: "", password: "" })
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    navigate("/patient/dashboard")
+    setError("")
+    setLoading(true)
+    try {
+      const data = await api("/patient/login", {
+        method: "POST",
+        body: JSON.stringify(formData),
+      })
+      setAuth(data.token, data.patient, "patient")
+      navigate("/patient/dashboard")
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -36,6 +52,11 @@ export default function PatientLoginPage() {
             <CardDescription>Enter your credentials to continue</CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm text-[#0F172A]">Email Address</Label>
@@ -77,8 +98,8 @@ export default function PatientLoginPage() {
                 <Link to="#" className="text-sm text-[#2563EB] hover:underline">Forgot password?</Link>
               </div>
 
-              <Button type="submit" className="w-full h-11 bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
-                Sign In
+              <Button type="submit" disabled={loading} className="w-full h-11 bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+                {loading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
 

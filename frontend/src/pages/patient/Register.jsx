@@ -5,11 +5,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Eye, EyeOff } from "lucide-react"
+import { api, setAuth } from "@/lib/api"
 
 export default function PatientRegisterPage() {
   const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -21,10 +24,36 @@ export default function PatientRegisterPage() {
     confirmPassword: "",
   })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Handle registration logic here
-    navigate("/patient/login")
+    setError("")
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const data = await api("/patient/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          age: formData.age ? parseInt(formData.age) : null,
+          gender: formData.gender || null,
+          bloodGroup: formData.bloodGroup || null,
+          password: formData.password,
+        }),
+      })
+      setAuth(data.token, data.patient, "patient")
+      navigate("/patient/dashboard")
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -47,70 +76,47 @@ export default function PatientRegisterPage() {
             <CardDescription>Fill in your details to register</CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName" className="text-sm text-[#0F172A]">Full Name</Label>
-                <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="John Doe"
-                  value={formData.fullName}
+                <Input id="fullName" type="text" placeholder="John Doe" value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB]"
-                  required
-                />
+                  className="h-11 border-[#E2E8F0]" required />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm text-[#0F172A]">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="patient@email.com"
-                  value={formData.email}
+                <Input id="email" type="email" placeholder="patient@email.com" value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB]"
-                  required
-                />
+                  className="h-11 border-[#E2E8F0]" required />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="text-sm text-[#0F172A]">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+91 98765 43210"
-                    value={formData.phone}
+                  <Input id="phone" type="tel" placeholder="+91 98765 43210" value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB]"
-                    required
-                  />
+                    className="h-11 border-[#E2E8F0]" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="age" className="text-sm text-[#0F172A]">Age</Label>
-                  <Input
-                    id="age"
-                    type="number"
-                    placeholder="25"
-                    value={formData.age}
+                  <Input id="age" type="number" placeholder="25" value={formData.age}
                     onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB]"
-                    required
-                  />
+                    className="h-11 border-[#E2E8F0]" required />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="gender" className="text-sm text-[#0F172A]">Gender</Label>
-                  <select
-                    id="gender"
-                    value={formData.gender}
+                  <select id="gender" value={formData.gender}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                    className="h-11 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm focus:border-[#2563EB] focus:ring-[#2563EB] focus:outline-none"
-                    required
-                  >
+                    className="h-11 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm focus:outline-none" required>
                     <option value="">Select</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
@@ -119,22 +125,14 @@ export default function PatientRegisterPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bloodGroup" className="text-sm text-[#0F172A]">Blood Group</Label>
-                  <select
-                    id="bloodGroup"
-                    value={formData.bloodGroup}
+                  <select id="bloodGroup" value={formData.bloodGroup}
                     onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
-                    className="h-11 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm focus:border-[#2563EB] focus:ring-[#2563EB] focus:outline-none"
-                    required
-                  >
+                    className="h-11 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm focus:outline-none" required>
                     <option value="">Select</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
+                    <option value="A+">A+</option><option value="A-">A-</option>
+                    <option value="B+">B+</option><option value="B-">B-</option>
+                    <option value="AB+">AB+</option><option value="AB-">AB-</option>
+                    <option value="O+">O+</option><option value="O-">O-</option>
                   </select>
                 </div>
               </div>
@@ -142,20 +140,11 @@ export default function PatientRegisterPage() {
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-sm text-[#0F172A]">Password</Label>
                 <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Create a password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB] pr-10"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
-                  >
+                  <Input id="password" type={showPassword ? "text" : "password"} placeholder="Create a password"
+                    value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="h-11 border-[#E2E8F0] pr-10" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -164,35 +153,24 @@ export default function PatientRegisterPage() {
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword" className="text-sm text-[#0F172A]">Confirm Password</Label>
                 <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="Confirm your password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#2563EB] focus:ring-[#2563EB] pr-10"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
-                  >
+                  <Input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} placeholder="Confirm your password"
+                    value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    className="h-11 border-[#E2E8F0] pr-10" required />
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]">
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              <Button type="submit" className="w-full h-11 bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
-                Create Account
+              <Button type="submit" disabled={loading} className="w-full h-11 bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+                {loading ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
 
             <div className="mt-6 text-center text-sm text-[#64748B]">
               Already have an account?{" "}
-              <Link to="/patient/login" className="text-[#2563EB] font-medium hover:underline">
-                Sign In
-              </Link>
+              <Link to="/patient/login" className="text-[#2563EB] font-medium hover:underline">Sign In</Link>
             </div>
           </CardContent>
         </Card>

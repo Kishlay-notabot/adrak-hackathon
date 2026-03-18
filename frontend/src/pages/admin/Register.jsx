@@ -5,11 +5,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Eye, EyeOff } from "lucide-react"
+import { api, setAuth } from "@/lib/api"
 
 export default function AdminRegisterPage() {
   const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -19,10 +22,34 @@ export default function AdminRegisterPage() {
     confirmPassword: "",
   })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Handle registration logic here
-    navigate("/admin/login")
+    setError("")
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const data = await api("/admin/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          employeeId: formData.employeeId,
+          department: formData.department,
+          password: formData.password,
+        }),
+      })
+      setAuth(data.token, data.admin, "admin")
+      navigate("/admin/dashboard")
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -45,6 +72,11 @@ export default function AdminRegisterPage() {
             <CardDescription>Fill in your details to register</CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName" className="text-sm text-[#0F172A]">Full Name</Label>
@@ -54,7 +86,7 @@ export default function AdminRegisterPage() {
                   placeholder="Dr. John Smith"
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A]"
+                  className="h-11 border-[#E2E8F0]"
                   required
                 />
               </div>
@@ -67,7 +99,7 @@ export default function AdminRegisterPage() {
                   placeholder="admin@medicore.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A]"
+                  className="h-11 border-[#E2E8F0]"
                   required
                 />
               </div>
@@ -81,7 +113,7 @@ export default function AdminRegisterPage() {
                     placeholder="EMP-001"
                     value={formData.employeeId}
                     onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A]"
+                    className="h-11 border-[#E2E8F0]"
                     required
                   />
                 </div>
@@ -93,7 +125,7 @@ export default function AdminRegisterPage() {
                     placeholder="Cardiology"
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A]"
+                    className="h-11 border-[#E2E8F0]"
                     required
                   />
                 </div>
@@ -108,14 +140,11 @@ export default function AdminRegisterPage() {
                     placeholder="Create a password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A] pr-10"
+                    className="h-11 border-[#E2E8F0] pr-10"
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
-                  >
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -130,29 +159,24 @@ export default function AdminRegisterPage() {
                     placeholder="Confirm your password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="h-11 border-[#E2E8F0] focus:border-[#0F172A] focus:ring-[#0F172A] pr-10"
+                    className="h-11 border-[#E2E8F0] pr-10"
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
-                  >
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]">
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              <Button type="submit" className="w-full h-11 bg-[#0F172A] hover:bg-[#1E293B] text-white">
-                Create Account
+              <Button type="submit" disabled={loading} className="w-full h-11 bg-[#0F172A] hover:bg-[#1E293B] text-white">
+                {loading ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
 
             <div className="mt-6 text-center text-sm text-[#64748B]">
               Already have an account?{" "}
-              <Link to="/admin/login" className="text-[#0F172A] font-medium hover:underline">
-                Sign In
-              </Link>
+              <Link to="/admin/login" className="text-[#0F172A] font-medium hover:underline">Sign In</Link>
             </div>
           </CardContent>
         </Card>

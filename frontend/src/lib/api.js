@@ -21,7 +21,6 @@ export async function api(path, options = {}) {
   return data;
 }
 
-// Auth helpers
 export function setAuth(token, user, role) {
   localStorage.setItem("token", token);
   localStorage.setItem("user", JSON.stringify(user));
