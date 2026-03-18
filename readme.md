@@ -1,2 +1,6 @@
 init readme  
 hello world
+
+<!--
+db prompt:
+ make a mongodb schema for my react web app, where i am working on a patient inflow managemnt app for hospitals, where there's only user entities: patient and admin, the idea is to simplify patient transfers and availability checking for the hospitals, we will keep track of the beds in the hospital, the OPds. and suppose an admin signs up on behalf of the hospital they provide all the details about the hospitals capacity, and we create a hospital entity with that data. and after that if another hospital signs up (admin entity again) they enter all the details etc. and then there's a dashboard for the admin panel where they see the information about their own beds, and their own stuff firstly then another "hospitals" tab in the dashboard where they see the surrounding hospitals where they can refer the patients accordingly. the main idea is to have a load balancing like tool for hospitals in emergency or surge istuations, and there should be a graph of incoming patients on the dashboard which tracks the footfall of patients every month, and we will use ai in future to predict etc. this is the initial idea, ask before you add anything on your own, and i only need the mongodb schema code.   -->
