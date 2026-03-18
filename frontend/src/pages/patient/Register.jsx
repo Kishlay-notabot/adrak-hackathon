@@ -1,7 +1,5 @@
-
 import { useState } from "react"
-import { Link } from "react-router-dom"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Eye, EyeOff } from "lucide-react"
 
 export default function PatientRegisterPage() {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [formData, setFormData] = useState({
@@ -26,14 +24,14 @@ export default function PatientRegisterPage() {
   const handleSubmit = (e) => {
     e.preventDefault()
     // Handle registration logic here
-    router.push("/patient/login")
+    navigate("/patient/login")
   }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-6">
+          <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <div className="w-10 h-10 bg-[#2563EB] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>
@@ -192,7 +190,7 @@ export default function PatientRegisterPage() {
 
             <div className="mt-6 text-center text-sm text-[#64748B]">
               Already have an account?{" "}
-              <Link href="/patient/login" className="text-[#2563EB] font-medium hover:underline">
+              <Link to="/patient/login" className="text-[#2563EB] font-medium hover:underline">
                 Sign In
               </Link>
             </div>
@@ -206,4 +204,3 @@ export default function PatientRegisterPage() {
     </div>
   )
 }
-

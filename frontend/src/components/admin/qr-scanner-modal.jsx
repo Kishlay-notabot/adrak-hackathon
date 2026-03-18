@@ -1,4 +1,3 @@
-
 import { useState } from "react"
 import {
   Dialog,
@@ -10,9 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { QrCode } from "lucide-react"
 
-
-
-export function QRScannerModal({ trigger }: QRScannerModalProps) {
+export function QRScannerModal({ trigger }) {
   const [scanned, setScanned] = useState(false)
 
   const handleScan = () => {
@@ -122,4 +119,3 @@ export function QRScannerModal({ trigger }: QRScannerModalProps) {
     </Dialog>
   )
 }
-
