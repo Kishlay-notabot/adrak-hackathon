@@ -60,7 +60,7 @@ export default function AdminRegisterPage() {
             <div className="w-10 h-10 bg-[#0F172A] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">M</span>
             </div>
-            <span className="text-xl font-semibold text-[#0F172A]">MediCore</span>
+            <span className="text-xl font-semibold text-[#0F172A]">mediflow</span>
           </Link>
           <h1 className="text-2xl font-semibold text-[#0F172A]">Admin Registration</h1>
           <p className="text-[#64748B] mt-1">Create your admin account</p>
@@ -96,7 +96,7 @@ export default function AdminRegisterPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@medicore.com"
+                  placeholder="admin@mediflow.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="h-11 border-[#E2E8F0]"
