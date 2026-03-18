@@ -1,5 +1,5 @@
 // frontend/src/pages/admin/QrScanner.jsx
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { AdminNavbar } from "@/components/admin/navbar"
 import { AdminSidebar } from "@/components/admin/sidebar"
@@ -8,7 +8,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { QRCodeCanvas } from "@/components/qr-code"
+import { Camera, AlertCircle } from "lucide-react"
 import { api, isLoggedIn, getRole } from "@/lib/api"
+
+/**
+ * Extracts a 24-char hex Mongo ObjectId from whatever the QR encodes.
+ * Handles full URLs, paths like /patient/:id, or raw ObjectIds.
+ */
+function extractPatientId(raw) {
+  const trimmed = raw.trim()
+  const match = trimmed.match(/(?:\/patient\/)?([a-f0-9]{24})/i)
+  return match ? match[1] : null
+}
 
 export default function QRScannerPage() {
   const navigate = useNavigate()
@@ -17,6 +28,11 @@ export default function QRScannerPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [manualId, setManualId] = useState("")
+
+  // Camera state
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraError, setCameraError] = useState("")
+  const scannerRef = useRef(null)
 
   const [showRemarkForm, setShowRemarkForm] = useState(false)
   const [remarkForm, setRemarkForm] = useState({ note: "", diagnosis: "", urgency: "low" })
@@ -32,6 +48,102 @@ export default function QRScannerPage() {
     if (!isLoggedIn() || getRole() !== "admin") navigate("/admin/login")
   }, [])
 
+  // ── Start camera when page is in scan mode ──────────────────────
+  useEffect(() => {
+    if (scanned) return
+
+    let scanner = null
+    let cancelled = false
+
+    async function startScanner() {
+      try {
+        const { Html5Qrcode } = await import("html5-qrcode")
+
+        // Wait longer for DOM to settle (React 19 Strict Mode double-mounts)
+        await new Promise((r) => setTimeout(r, 600))
+        if (cancelled) return
+
+        const el = document.getElementById("qr-reader")
+        if (!el) return
+
+        // Clear any leftover children from a previous mount/unmount cycle
+        // html5-qrcode injects <video> and other elements that persist across
+        // React Strict Mode's mount → unmount → remount in dev
+        el.innerHTML = ""
+
+        scanner = new Html5Qrcode("qr-reader", { verbose: false })
+        scannerRef.current = scanner
+
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 220, height: 220 },
+            aspectRatio: 1,
+          },
+          onScanSuccess,
+          () => {} // ignore per-frame misses
+        )
+
+        if (!cancelled) {
+          setCameraReady(true)
+          setCameraError("")
+        } else {
+          // If cancelled during await, clean up immediately
+          if (scanner.isScanning) scanner.stop().catch(() => {})
+        }
+      } catch (err) {
+        // Ignore abort errors from cleanup racing with start
+        if (cancelled) return
+        const msg = typeof err === "string" ? err : err?.message || ""
+        if (msg.includes("AbortError") || msg.includes("aborted")) return
+        console.warn("Camera start failed:", err)
+        if (!cancelled) {
+          setCameraError(msg || "Could not access camera")
+        }
+      }
+    }
+
+    startScanner()
+
+    return () => {
+      cancelled = true
+      if (scanner) {
+        try {
+          if (scanner.isScanning) scanner.stop().catch(() => {})
+        } catch {
+          // scanner may already be in a bad state, ignore
+        }
+      }
+      scannerRef.current = null
+      setCameraReady(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanned])
+
+  // ── QR decoded ──────────────────────────────────────────────────
+  const scanHandledRef = useRef(false)
+
+  async function onScanSuccess(decoded) {
+    // Prevent duplicate fires while stop() is in-flight
+    if (scanHandledRef.current) return
+    scanHandledRef.current = true
+
+    if (scannerRef.current?.isScanning) {
+      await scannerRef.current.stop().catch(() => {})
+      setCameraReady(false)
+    }
+
+    const patientId = extractPatientId(decoded)
+    if (patientId) {
+      handleLookup(patientId)
+    } else {
+      setError("Scanned QR does not contain a valid patient ID")
+      scanHandledRef.current = false // allow retry
+    }
+  }
+
+  // ── Fetch patient ───────────────────────────────────────────────
   const handleLookup = async (patientId) => {
     if (!patientId) return
     setError("")
@@ -47,7 +159,9 @@ export default function QRScannerPage() {
     }
   }
 
+  // ── Reset (go back to scanner) ─────────────────────────────────
   const handleReset = () => {
+    scanHandledRef.current = false
     setScanned(false)
     setPatient(null)
     setError("")
@@ -56,8 +170,11 @@ export default function QRScannerPage() {
     setShowAdmitForm(false)
     setRemarkSuccess("")
     setAdmitSuccess("")
+    setCameraError("")
+    setCameraReady(false)
   }
 
+  // ── Add remark ──────────────────────────────────────────────────
   const handleAddRemark = async (e) => {
     e.preventDefault()
     setRemarkLoading(true)
@@ -78,6 +195,7 @@ export default function QRScannerPage() {
     }
   }
 
+  // ── Admit patient ───────────────────────────────────────────────
   const handleAdmit = async (e) => {
     e.preventDefault()
     setAdmitLoading(true)
@@ -107,15 +225,61 @@ export default function QRScannerPage() {
               {!scanned ? (
                 <div className="flex flex-col items-center">
                   <h2 className="text-xl font-semibold text-[#0F172A] mb-6">Scan Patient QR Code</h2>
-                  <div className="relative w-72 h-72 bg-[#0F172A] rounded-xl flex items-center justify-center mb-6">
-                    <div className="absolute top-4 left-4 w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
-                    <div className="absolute top-4 right-4 w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
-                    <div className="absolute bottom-4 left-4 w-10 h-10 border-l-4 border-b-4 border-white rounded-bl-lg" />
-                    <div className="absolute bottom-4 right-4 w-10 h-10 border-r-4 border-b-4 border-white rounded-br-lg" />
-                    <div className="w-56 h-0.5 bg-white/50 animate-pulse" />
+
+                  {/* ── Camera viewfinder ──────────────────────────── */}
+                  {/* Hide html5-qrcode's default UI (file upload, camera swap, border) */}
+                  <style>{`
+                    #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+                    #qr-reader img[alt="Info icon"] { display: none !important; }
+                    #qr-reader__dashboard { display: none !important; }
+                    #qr-reader__scan_region > img { display: none !important; }
+                    #qr-reader { border: none !important; }
+                    #qr-reader__scan_region { position: absolute !important; inset: 0 !important; min-height: 0 !important; }
+                  `}</style>
+                  <div className="relative w-72 h-72 rounded-xl overflow-hidden mb-6">
+                    {/* html5-qrcode MUST have an empty div — it injects its own children */}
+                    <div
+                      id="qr-reader"
+                      className="absolute inset-0 bg-[#0F172A]"
+                    />
+
+                    {/* Corner brackets overlay (always on top of video) */}
+                    <div className="absolute inset-0 z-20 pointer-events-none">
+                      <div className="absolute top-4 left-4 w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
+                      <div className="absolute top-4 right-4 w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+                      <div className="absolute bottom-4 left-4 w-10 h-10 border-l-4 border-b-4 border-white rounded-bl-lg" />
+                      <div className="absolute bottom-4 right-4 w-10 h-10 border-r-4 border-b-4 border-white rounded-br-lg" />
+                    </div>
+
+                    {/* Loading placeholder while camera initializes */}
+                    {!cameraReady && !cameraError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+                        <Camera className="w-10 h-10 text-white/30 animate-pulse" />
+                        <p className="text-white/40 text-xs mt-2">Starting camera…</p>
+                      </div>
+                    )}
+
+                    {/* Camera error state */}
+                    {cameraError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none px-6">
+                        <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
+                        <p className="text-white/70 text-xs text-center leading-relaxed">
+                          {cameraError}
+                        </p>
+                        <p className="text-white/40 text-[10px] mt-2 text-center">
+                          Use manual entry below instead
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  <p className="text-[#64748B] text-sm mb-4">Enter Patient ID manually:</p>
+                  {cameraReady && (
+                    <p className="text-green-600 text-xs mb-3 font-medium">
+                      Camera active — point at a patient QR code
+                    </p>
+                  )}
+
+                  <p className="text-[#64748B] text-sm mb-2">Enter Patient ID manually:</p>
                   <p className="text-xs text-[#64748B] mb-3">
                     The patient's QR code encodes their ID. Ask the patient to show their QR from the MediCore app.
                   </p>
