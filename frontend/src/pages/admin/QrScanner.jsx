@@ -43,6 +43,7 @@ export default function QRScannerPage() {
   const [admitForm, setAdmitForm] = useState({ doctor: "", ward: "", reason: "" })
   const [admitLoading, setAdmitLoading] = useState(false)
   const [admitSuccess, setAdmitSuccess] = useState("")
+  const [statusLoading, setStatusLoading] = useState(null) // holds admissionId being updated
 
   useEffect(() => {
     if (!isLoggedIn() || getRole() !== "admin") navigate("/admin/login")
@@ -207,10 +208,32 @@ export default function QRScannerPage() {
       setAdmitSuccess("Patient admitted successfully!")
       setAdmitForm({ doctor: "", ward: "", reason: "" })
       setShowAdmitForm(false)
+      // Refresh patient to show the new admission
+      const updated = await api(`/patient/${patient._id}`)
+      setPatient(updated)
     } catch (err) {
       setError(err.message)
     } finally {
       setAdmitLoading(false)
+    }
+  }
+
+  // ── Change admission status (discharge / mark critical) ────────
+  const handleStatusChange = async (admissionId, newStatus) => {
+    setStatusLoading(admissionId)
+    setError("")
+    try {
+      await api(`/admission/${admissionId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      })
+      // Refresh patient to reflect updated admission
+      const updated = await api(`/patient/${patient._id}`)
+      setPatient(updated)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setStatusLoading(null)
     }
   }
 
@@ -386,6 +409,87 @@ export default function QRScannerPage() {
                                 <p className="text-sm text-[#64748B]">{r.note}</p>
                                 {r.diagnosis && <p className="text-xs text-[#64748B] mt-1">Diagnosis: {r.diagnosis}</p>}
                                 {r.referredTo && <p className="text-xs text-[#2563EB] mt-1">Referred to: {r.referredTo.name}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Active Admissions at this hospital ──────── */}
+                      {patient.admissions?.length > 0 && (
+                        <div>
+                          <p className="text-xs text-[#64748B] uppercase tracking-wide mb-2">
+                            Admissions at Your Hospital
+                          </p>
+                          <div className="space-y-3">
+                            {patient.admissions.map((a) => (
+                              <div key={a._id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div>
+                                    <p className="text-sm text-[#0F172A]">
+                                      {new Date(a.admittedAt).toLocaleDateString("en-IN", {
+                                        year: "numeric", month: "short", day: "numeric",
+                                      })}
+                                    </p>
+                                    <p className="text-xs text-[#64748B]">
+                                      {[a.doctor, a.ward, a.reason].filter(Boolean).join(" · ") || "No details"}
+                                    </p>
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                                    a.status === "admitted" ? "bg-[#DCFCE7] text-[#16A34A]" :
+                                    a.status === "critical" ? "bg-[#FEE2E2] text-[#DC2626]" :
+                                    "bg-[#F1F5F9] text-[#64748B]"
+                                  }`}>
+                                    {a.status}
+                                  </span>
+                                </div>
+
+                                {/* Status actions — only for active admissions */}
+                                {(a.status === "admitted" || a.status === "critical") && (
+                                  <div className="flex gap-2 pt-1 border-t border-[#E2E8F0]">
+                                    {a.status !== "discharged" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7 border-[#E2E8F0]"
+                                        disabled={statusLoading === a._id}
+                                        onClick={() => handleStatusChange(a._id, "discharged")}
+                                      >
+                                        {statusLoading === a._id ? "..." : "Discharge"}
+                                      </Button>
+                                    )}
+                                    {a.status === "admitted" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+                                        disabled={statusLoading === a._id}
+                                        onClick={() => handleStatusChange(a._id, "critical")}
+                                      >
+                                        {statusLoading === a._id ? "..." : "Mark Critical"}
+                                      </Button>
+                                    )}
+                                    {a.status === "critical" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+                                        disabled={statusLoading === a._id}
+                                        onClick={() => handleStatusChange(a._id, "admitted")}
+                                      >
+                                        {statusLoading === a._id ? "..." : "Downgrade to Admitted"}
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {a.status === "discharged" && a.dischargedAt && (
+                                  <p className="text-xs text-[#64748B] pt-1 border-t border-[#E2E8F0]">
+                                    Discharged: {new Date(a.dischargedAt).toLocaleDateString("en-IN", {
+                                      year: "numeric", month: "short", day: "numeric",
+                                    })}
+                                  </p>
+                                )}
                               </div>
                             ))}
                           </div>

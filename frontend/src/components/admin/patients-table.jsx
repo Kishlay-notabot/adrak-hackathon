@@ -314,11 +314,29 @@ export function PatientsTable() {
                             {a.status}
                           </span>
                           {a.status === "admitted" && (
-                            <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
-                              onClick={() => handleStatusChange(a._id, "discharged")}>
-                              Discharge
-                            </Button>
-                          )}
+  <>
+    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+      onClick={() => handleStatusChange(a._id, "discharged")}>
+      Discharge
+    </Button>
+    <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+      onClick={() => handleStatusChange(a._id, "critical")}>
+      Mark Critical
+    </Button>
+  </>
+)}
+{a.status === "critical" && (
+  <>
+    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+      onClick={() => handleStatusChange(a._id, "discharged")}>
+      Discharge
+    </Button>
+    <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+      onClick={() => handleStatusChange(a._id, "admitted")}>
+      Downgrade
+    </Button>
+  </>
+)}
                         </div>
                       </div>
                     ))}
