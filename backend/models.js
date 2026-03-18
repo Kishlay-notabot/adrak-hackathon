@@ -2,9 +2,8 @@ const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 // ─── Patient ────────────────────────────────────────────────────────
-// End-user of the app. Signs up, gets a profile with a QR code (just
-// encodes /patient/:_id). Hospitals scan it to view past remarks and
-// transfer history — the remarks array is the core referral trail.
+// End-user. QR code just encodes /patient/:_id (generated client-side).
+// Hospitals scan it to view remarks — the passive referral trail.
 const patientSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -19,29 +18,14 @@ const patientSchema = new Schema(
       state: String,
       pincode: String,
     },
-
-    // passive referral / transfer remarks left by hospital admins
-    // QR code is generated client-side from the patient's profile URL (/patient/:_id)
     remarks: [
       {
-        hospitalId: {
-          type: Schema.Types.ObjectId,
-          ref: "Hospital",
-          required: true,
-        },
-        adminId: {
-          type: Schema.Types.ObjectId,
-          ref: "Admin",
-          required: true,
-        },
-        referredTo: { type: Schema.Types.ObjectId, ref: "Hospital" }, // null if no onward referral
+        hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+        adminId: { type: Schema.Types.ObjectId, ref: "Admin", required: true },
+        referredTo: { type: Schema.Types.ObjectId, ref: "Hospital" },
         note: { type: String, required: true },
         diagnosis: { type: String },
-        urgency: {
-          type: String,
-          enum: ["low", "medium", "high", "critical"],
-          default: "low",
-        },
+        urgency: { type: String, enum: ["low", "medium", "high", "critical"], default: "low" },
         date: { type: Date, default: Date.now },
       },
     ],
@@ -50,54 +34,37 @@ const patientSchema = new Schema(
 );
 
 // ─── Admin ──────────────────────────────────────────────────────────
-// Hospital staff who manage the dashboard. The first admin to sign up
-// creates the hospital entity; subsequent admins join the same hospitalId.
-// Roles control access (receptionist scans QR, manager edits beds, etc.).
+// Hospital staff. First admin to sign up creates the hospital entity.
 const adminSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
     phone: { type: String, required: true },
-    role: {
-      type: String,
-      enum: ["receptionist", "manager", "superadmin"],
-      default: "manager",
-    },
-    hospitalId: {
-      type: Schema.Types.ObjectId,
-      ref: "Hospital",
-      required: true,
-    },
+    role: { type: String, enum: ["receptionist", "manager", "superadmin"], default: "manager" },
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
   },
   { timestamps: true }
 );
 
 // ─── Hospital ───────────────────────────────────────────────────────
-// Created when the first admin signs up for a hospital. Stores capacity
-// (bed counts by category), OPD departments, and a GeoJSON location so
-// the "nearby hospitals" tab can query with $near for load-balancing.
+// Capacity, OPDs, and GeoJSON location for $near queries.
 const hospitalSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     registrationNumber: { type: String, unique: true },
     phone: { type: String, required: true },
     email: { type: String, lowercase: true },
-
     address: {
       street: String,
       city: { type: String, required: true },
       state: { type: String, required: true },
       pincode: { type: String, required: true },
     },
-
-    // GeoJSON point — enables $near queries for "surrounding hospitals"
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], required: true }, // [lng, lat]
     },
-
-    // bed capacity (counts only)
     beds: {
       general: { total: { type: Number, default: 0 }, available: { type: Number, default: 0 } },
       icu: { total: { type: Number, default: 0 }, available: { type: Number, default: 0 } },
@@ -105,52 +72,37 @@ const hospitalSchema = new Schema(
       pediatric: { total: { type: Number, default: 0 }, available: { type: Number, default: 0 } },
       maternity: { total: { type: Number, default: 0 }, available: { type: Number, default: 0 } },
     },
-
-    // OPD departments
     opds: [
       {
-        name: { type: String, required: true }, // e.g. "Cardiology", "Ortho"
+        name: { type: String, required: true },
         dailyCapacity: { type: Number, default: 0 },
         currentLoad: { type: Number, default: 0 },
         isActive: { type: Boolean, default: true },
       },
     ],
-
-    // quick flags for the dashboard / nearby-hospital list
     isActive: { type: Boolean, default: true },
     emergencyReady: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
-
 hospitalSchema.index({ location: "2dsphere" });
 
 // ─── Patient Inflow ─────────────────────────────────────────────────
-// Pre-aggregated daily footfall per hospital. Powers the monthly graph
-// on the admin dashboard. One doc per hospital per day (upserted via
-// $inc). opdBreakdown splits the count by department for drill-down.
-// This collection will also feed the future AI prediction pipeline.
+// One doc per hospital per day. Powers the monthly footfall graph.
 const patientInflowSchema = new Schema(
   {
-    hospitalId: {
-      type: Schema.Types.ObjectId,
-      ref: "Hospital",
-      required: true,
-    },
-    date: { type: Date, required: true }, // store as first-of-day (midnight)
-    count: { type: Number, default: 0 }, // total patients that day
-    opdBreakdown: { type: Map, of: Number }, // e.g. { "Cardiology": 12, "Ortho": 5 }
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    date: { type: Date, required: true },
+    count: { type: Number, default: 0 },
+    opdBreakdown: { type: Map, of: Number },
   },
   { timestamps: true }
 );
-
-// one doc per hospital per day — upsert-friendly
 patientInflowSchema.index({ hospitalId: 1, date: 1 }, { unique: true });
 
-// ─── Exports ────────────────────────────────────────────────────────
-const Patient = mongoose.model("Patient", patientSchema);
-const Admin = mongoose.model("Admin", adminSchema);
-const Hospital = mongoose.model("Hospital", hospitalSchema);
-const PatientInflow = mongoose.model("PatientInflow", patientInflowSchema);
-
-module.exports = { Patient, Admin, Hospital, PatientInflow };
+module.exports = {
+  Patient: mongoose.model("Patient", patientSchema),
+  Admin: mongoose.model("Admin", adminSchema),
+  Hospital: mongoose.model("Hospital", hospitalSchema),
+  PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
+};
