@@ -1,10 +1,76 @@
 const router = require("express").Router();
-const { Hospital, PatientInflow } = require("./models");
-const { auth, requireRole } = require("./auth");
+const jwt = require("jsonwebtoken");
+const { Hospital, Admin, PatientInflow } = require("../models");
+const { auth, requireRole, requireHospital } = require("../middleware/auth");
+
+// Helper: reissue token with updated hospitalId
+function refreshToken(admin) {
+  return jwt.sign(
+    { id: admin._id, role: "admin", hospitalId: admin.hospitalId },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+// ── POST /api/hospital/create ───────────────────────────────────────
+// Admin creates a new hospital and gets linked to it.
+// Called after admin signup when they're ready to register their hospital.
+// Body: { name, registrationNumber?, phone, email?, address, coordinates:[lng,lat], beds?, opds? }
+router.post("/create", auth, requireRole("admin"), async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.user.id);
+    if (!admin) return res.status(404).json({ error: "Admin not found" });
+    if (admin.hospitalId) return res.status(400).json({ error: "Already linked to a hospital" });
+
+    const { name, registrationNumber, phone, email, address, coordinates, beds, opds } = req.body;
+    if (!name || !phone || !address || !coordinates)
+      return res.status(400).json({ error: "name, phone, address, and coordinates are required" });
+
+    const hospital = await Hospital.create({
+      name,
+      registrationNumber: registrationNumber || null,
+      phone,
+      email: email || null,
+      address,
+      location: { type: "Point", coordinates },
+      beds: beds || {},
+      opds: opds || [],
+    });
+
+    // link admin to the new hospital
+    admin.hospitalId = hospital._id;
+    await admin.save();
+
+    res.status(201).json({ hospital, token: refreshToken(admin) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/hospital/join ─────────────────────────────────────────
+// Admin joins an existing hospital by its ID.
+// Body: { hospitalId }
+router.post("/join", auth, requireRole("admin"), async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.user.id);
+    if (!admin) return res.status(404).json({ error: "Admin not found" });
+    if (admin.hospitalId) return res.status(400).json({ error: "Already linked to a hospital" });
+
+    const hospital = await Hospital.findById(req.body.hospitalId);
+    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
+
+    admin.hospitalId = hospital._id;
+    await admin.save();
+
+    res.json({ hospital, token: refreshToken(admin) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── GET /api/hospital/mine ──────────────────────────────────────────
-// Admin views their own hospital dashboard data
-router.get("/mine", auth, requireRole("admin"), async (req, res) => {
+// Admin views their own hospital dashboard data.
+router.get("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const hospital = await Hospital.findById(req.user.hospitalId);
     if (!hospital) return res.status(404).json({ error: "Hospital not found" });
@@ -15,11 +81,10 @@ router.get("/mine", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── PUT /api/hospital/mine ──────────────────────────────────────────
-// Update hospital details (beds, OPDs, contact info, etc.)
-router.put("/mine", auth, requireRole("admin"), async (req, res) => {
+// Update hospital details (beds, OPDs, contact info, etc.).
+router.put("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
-    const updates = req.body; // pass whichever fields need updating
-    const hospital = await Hospital.findByIdAndUpdate(req.user.hospitalId, updates, {
+    const hospital = await Hospital.findByIdAndUpdate(req.user.hospitalId, req.body, {
       new: true,
       runValidators: true,
     });
@@ -31,8 +96,9 @@ router.put("/mine", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── PATCH /api/hospital/mine/beds ───────────────────────────────────
-// Quick bed availability update — send { general: { available: 10 }, icu: { available: 3 } }
-router.patch("/mine/beds", auth, requireRole("admin"), async (req, res) => {
+// Quick bed availability update.
+// Body: { general: { available: 10 }, icu: { available: 3 } }
+router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const setBeds = {};
     for (const [category, values] of Object.entries(req.body)) {
@@ -52,10 +118,12 @@ router.patch("/mine/beds", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── PATCH /api/hospital/mine/opds ───────────────────────────────────
-// Update an OPD's currentLoad or isActive — send { opdId, currentLoad?, isActive? }
-router.patch("/mine/opds", auth, requireRole("admin"), async (req, res) => {
+// Update a specific OPD. Body: { opdId, currentLoad?, isActive? }
+router.patch("/mine/opds", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const { opdId, ...fields } = req.body;
+    if (!opdId) return res.status(400).json({ error: "opdId is required" });
+
     const setFields = {};
     for (const [key, val] of Object.entries(fields)) {
       setFields[`opds.$.${key}`] = val;
@@ -73,15 +141,15 @@ router.patch("/mine/opds", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── GET /api/hospital/nearby ────────────────────────────────────────
-// Returns hospitals within a radius, sorted by distance.
-// Query params: ?lng=77.21&lat=28.63&maxDistance=10000 (meters, default 10km)
-router.get("/nearby", auth, requireRole("admin"), async (req, res) => {
+// Surrounding hospitals sorted by distance. Excludes own.
+// Query: ?lng=77.21&lat=28.63&maxDistance=10000 (meters, default 10km)
+router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const { lng, lat, maxDistance = 10000 } = req.query;
-    if (!lng || !lat) return res.status(400).json({ error: "lng and lat required" });
+    if (!lng || !lat) return res.status(400).json({ error: "lng and lat are required" });
 
     const hospitals = await Hospital.find({
-      _id: { $ne: req.user.hospitalId }, // exclude own hospital
+      _id: { $ne: req.user.hospitalId },
       isActive: true,
       location: {
         $near: {
@@ -97,34 +165,10 @@ router.get("/nearby", auth, requireRole("admin"), async (req, res) => {
   }
 });
 
-// ── POST /api/hospital/inflow ───────────────────────────────────────
-// Log a patient visit. Upserts today's doc, increments count.
-// Body: { opdName?: "Cardiology" } — optional for breakdown tracking.
-router.post("/inflow", auth, requireRole("admin"), async (req, res) => {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const update = { $inc: { count: 1 } };
-    if (req.body.opdName) {
-      update.$inc[`opdBreakdown.${req.body.opdName}`] = 1;
-    }
-
-    const doc = await PatientInflow.findOneAndUpdate(
-      { hospitalId: req.user.hospitalId, date: today },
-      update,
-      { upsert: true, new: true }
-    );
-    res.json(doc);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── GET /api/hospital/inflow/stats ──────────────────────────────────
-// Monthly footfall for the dashboard graph.
-// Query params: ?months=6 (default 6, how many months back)
-router.get("/inflow/stats", auth, requireRole("admin"), async (req, res) => {
+// Monthly footfall for the dashboard chart.
+// Query: ?months=6 (default 6)
+router.get("/inflow/stats", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const months = parseInt(req.query.months) || 6;
     const since = new Date();
@@ -133,7 +177,12 @@ router.get("/inflow/stats", auth, requireRole("admin"), async (req, res) => {
     since.setHours(0, 0, 0, 0);
 
     const stats = await PatientInflow.aggregate([
-      { $match: { hospitalId: req.user.hospitalId, date: { $gte: since } } },
+      {
+        $match: {
+          hospitalId: req.user.hospitalId,
+          date: { $gte: since },
+        },
+      },
       {
         $group: {
           _id: { year: { $year: "$date" }, month: { $month: "$date" } },
