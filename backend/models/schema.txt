@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 // ─── Patient ────────────────────────────────────────────────────────
+// End-user of the app. Signs up, gets a profile with a QR code (just
+// encodes /patient/:_id). Hospitals scan it to view past remarks and
+// transfer history — the remarks array is the core referral trail.
 const patientSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -47,6 +50,9 @@ const patientSchema = new Schema(
 );
 
 // ─── Admin ──────────────────────────────────────────────────────────
+// Hospital staff who manage the dashboard. The first admin to sign up
+// creates the hospital entity; subsequent admins join the same hospitalId.
+// Roles control access (receptionist scans QR, manager edits beds, etc.).
 const adminSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -68,6 +74,9 @@ const adminSchema = new Schema(
 );
 
 // ─── Hospital ───────────────────────────────────────────────────────
+// Created when the first admin signs up for a hospital. Stores capacity
+// (bed counts by category), OPD departments, and a GeoJSON location so
+// the "nearby hospitals" tab can query with $near for load-balancing.
 const hospitalSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -116,7 +125,11 @@ const hospitalSchema = new Schema(
 
 hospitalSchema.index({ location: "2dsphere" });
 
-// ─── Patient Inflow (pre-aggregated for the graph) ─────────────────
+// ─── Patient Inflow ─────────────────────────────────────────────────
+// Pre-aggregated daily footfall per hospital. Powers the monthly graph
+// on the admin dashboard. One doc per hospital per day (upserted via
+// $inc). opdBreakdown splits the count by department for drill-down.
+// This collection will also feed the future AI prediction pipeline.
 const patientInflowSchema = new Schema(
   {
     hospitalId: {
