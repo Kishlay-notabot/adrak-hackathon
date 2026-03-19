@@ -10,6 +10,7 @@ import AdminDoctors from './pages/admin/Doctors'
 import AdminReports from './pages/admin/Reports'
 import AdminSettings from './pages/admin/Settings'
 import AdminHospitalSetup from './pages/admin/HospitalSetup'
+import AdminResources from './pages/admin/Resources'
 import PatientLogin from './pages/patient/Login'
 import PatientRegister from './pages/patient/Register'
 import PatientDashboard from './pages/patient/Dashboard'
@@ -31,6 +32,7 @@ function App() {
         <Route path="/admin/patients" element={<AdminPatients />} />
         <Route path="/admin/doctors" element={<AdminDoctors />} />
         <Route path="/admin/qr-scanner" element={<AdminQrScanner />} />
+        <Route path="/admin/resources" element={<AdminResources />} />
         <Route path="/admin/reports" element={<AdminReports />} />
         <Route path="/admin/settings" element={<AdminSettings />} />
         <Route path="/admin/hospital-setup" element={<AdminHospitalSetup />} />

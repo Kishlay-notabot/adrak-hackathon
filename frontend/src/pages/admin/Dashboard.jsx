@@ -5,11 +5,12 @@ import { AdminNavbar } from "@/components/admin/navbar"
 import { AdminSidebar } from "@/components/admin/sidebar"
 import { StatsCard } from "@/components/stats-card"
 import { PatientVisitsChart } from "@/components/admin/patient-visits-chart"
+import { AdmissionFlowChart } from "@/components/admin/admission-flow-chart"
 import { PatientsTable } from "@/components/admin/patients-table"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Building2 } from "lucide-react"
-import { api, isLoggedIn, getRole, getUser } from "@/lib/api"
+import { api, isLoggedIn, getRole } from "@/lib/api"
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
@@ -84,8 +85,9 @@ export default function AdminDashboard() {
                   description="Active bed categories"
                 />
               </div>
-              <div className="mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <PatientVisitsChart />
+                <AdmissionFlowChart />
               </div>
               <PatientsTable />
             </>

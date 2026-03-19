@@ -14,6 +14,7 @@ app.use("/api/patient", require("./routes/patient"));
 app.use("/api/hospital", require("./routes/hospital"));
 app.use("/api/admission", require("./routes/admission"));
 app.use("/api/medical-records", require("./routes/medical-record"));
+app.use("/api/resources", require("./routes/resource"));
 
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));

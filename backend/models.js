@@ -149,34 +149,27 @@ admissionSchema.index({ hospitalId: 1, status: 1 });
 admissionSchema.index({ patientId: 1, admittedAt: -1 });
 
 // ─── Medical Record ─────────────────────────────────────────────────
-// Lab data and clinical observations — created after admission
 const medicalRecordSchema = new Schema(
   {
     patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
     admissionId: { type: Schema.Types.ObjectId, ref: "Admission", required: true },
     hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
-
-    // Lab values
-    hb: { type: Number },          // Hemoglobin
-    tlc: { type: Number },         // Total Leucocyte Count
+    hb: { type: Number },
+    tlc: { type: Number },
     platelets: { type: Number },
     glucose: { type: Number },
     urea: { type: Number },
     creatinine: { type: Number },
-    bnp: { type: Number },         // Brain Natriuretic Peptide
+    bnp: { type: Number },
     raisedCardiacEnzymes: { type: Boolean, default: false },
-    ef: { type: Number },          // Ejection Fraction
-
-    // Pre-existing conditions (boolean flags)
+    ef: { type: Number },
     smoking: { type: Boolean, default: false },
     alcohol: { type: Boolean, default: false },
-    diabetes: { type: Boolean, default: false },       // DM
-    hypertension: { type: Boolean, default: false },   // HTN
-    cad: { type: Boolean, default: false },            // Coronary Artery Disease
-    priorCmp: { type: Boolean, default: false },       // Prior Cardiomyopathy
-    ckd: { type: Boolean, default: false },            // Chronic Kidney Disease
-
-    // Diagnosis flags
+    diabetes: { type: Boolean, default: false },
+    hypertension: { type: Boolean, default: false },
+    cad: { type: Boolean, default: false },
+    priorCmp: { type: Boolean, default: false },
+    ckd: { type: Boolean, default: false },
     severeAnaemia: { type: Boolean, default: false },
     anaemia: { type: Boolean, default: false },
     stableAngina: { type: Boolean, default: false },
@@ -205,7 +198,6 @@ const medicalRecordSchema = new Schema(
     shock: { type: Boolean, default: false },
     pulmonaryEmbolism: { type: Boolean, default: false },
     chestInfection: { type: Boolean, default: false },
-
     recordedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }
@@ -213,6 +205,56 @@ const medicalRecordSchema = new Schema(
 
 medicalRecordSchema.index({ patientId: 1 });
 medicalRecordSchema.index({ admissionId: 1 });
+
+// ─── Resource Status ────────────────────────────────────────────────
+// Hourly snapshots of hospital resource utilization.
+// Seeded from hospital_resource_data CSV.
+const resourceStatusSchema = new Schema(
+  {
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    timestamp: { type: Date, required: true },
+
+    // Beds
+    totalBeds: { type: Number, default: 0 },
+    occupiedBeds: { type: Number, default: 0 },
+    availableBeds: { type: Number, default: 0 },
+
+    // ICU
+    totalIcuBeds: { type: Number, default: 0 },
+    occupiedIcuBeds: { type: Number, default: 0 },
+    availableIcuBeds: { type: Number, default: 0 },
+
+    // Staff
+    totalDoctors: { type: Number, default: 0 },
+    availableDoctors: { type: Number, default: 0 },
+    totalNurses: { type: Number, default: 0 },
+    availableNurses: { type: Number, default: 0 },
+
+    // Equipment
+    ventilatorsTotal: { type: Number, default: 0 },
+    ventilatorsInUse: { type: Number, default: 0 },
+    oxygenUnitsTotal: { type: Number, default: 0 },
+    oxygenUnitsInUse: { type: Number, default: 0 },
+
+    // Patient flow
+    incomingPatients: { type: Number, default: 0 },
+    dischargedPatients: { type: Number, default: 0 },
+    emergencyCases: { type: Number, default: 0 },
+    opdCases: { type: Number, default: 0 },
+
+    // Metrics
+    avgWaitTimeMinutes: { type: Number, default: 0 },
+    avgTreatmentTimeMinutes: { type: Number, default: 0 },
+    bedTurnoverRate: { type: Number, default: 0 },
+    resourceUtilizationRate: { type: Number, default: 0 },
+    icuUtilizationRate: { type: Number, default: 0 },
+    staffLoadRatio: { type: Number, default: 0 },
+    emergencyPressureScore: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+resourceStatusSchema.index({ hospitalId: 1, timestamp: -1 });
 
 // ─── Patient Inflow ─────────────────────────────────────────────────
 const patientInflowSchema = new Schema(
@@ -232,6 +274,7 @@ module.exports = {
   Hospital: mongoose.model("Hospital", hospitalSchema),
   Admission: mongoose.model("Admission", admissionSchema),
   MedicalRecord: mongoose.model("MedicalRecord", medicalRecordSchema),
+  ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
   Counter,
 };
