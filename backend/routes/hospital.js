@@ -170,9 +170,16 @@ router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, r
 // Query: ?months=6 (default 6)
 router.get("/inflow/stats", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
-    const months = parseInt(req.query.months) || 6;
-    const since = new Date();
-    since.setMonth(since.getMonth() - months);
+    const months = req.query.months === "all" ? null : (parseInt(req.query.months) || 6);
+let since;
+if (months) {
+  since = new Date();
+  since.setMonth(since.getMonth() - months);
+} else {
+  // Get earliest inflow date
+  const earliest = await PatientInflow.findOne({ hospitalId: req.user.hospitalId }).sort({ date: 1 }).lean();
+  since = earliest ? earliest.date : new Date();
+}
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 

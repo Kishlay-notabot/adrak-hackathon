@@ -30,7 +30,7 @@ export function PatientVisitsChart() {
     setLoading(true)
     try {
       const months = activeFilter === "Year" ? 12 : 6
-      const stats = await api(`/hospital/inflow/stats?months=${months}`)
+      const stats = await api(`/hospital/inflow/stats?months=all`)
 
       // Transform API response { year, month, total } into chart-friendly format
       const data = stats.map((s) => ({
