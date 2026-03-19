@@ -268,6 +268,22 @@ const patientInflowSchema = new Schema(
 );
 patientInflowSchema.index({ hospitalId: 1, date: 1 }, { unique: true });
 
+const appointmentSchema = new Schema(
+  {
+    patientName: { type: String, required: true },
+    patientPhone: { type: String, required: true },
+    doctor: { type: String, required: true },
+    date: { type: String, required: true },
+    time: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["pending", "confirmed", "cancelled"],
+      default: "pending"
+    }
+  },
+  { timestamps: true }
+);
+
 module.exports = {
   Patient: mongoose.model("Patient", patientSchema),
   Admin: mongoose.model("Admin", adminSchema),
@@ -276,5 +292,6 @@ module.exports = {
   MedicalRecord: mongoose.model("MedicalRecord", medicalRecordSchema),
   ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
+  Appointment: mongoose.model("Appointment", appointmentSchema),  // ← YEH ADD KARO
   Counter,
 };
