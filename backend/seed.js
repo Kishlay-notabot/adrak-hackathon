@@ -73,7 +73,8 @@ function generatePhone() {
   return `+91${Math.floor(7000000000 + Math.random() * 3000000000)}`;
 }
 
-// ── Date parsing ────────────────────────────────────────────────────
+// ── Date parsing with year shift ────────────────────────────────────
+// Shifts historical dates (2023) to recent dates (2026) for forecasting demos
 function parseDate(str) {
   if (!str) return null;
   // Handle both M/D/YYYY and DD/MM/YYYY formats
@@ -81,10 +82,23 @@ function parseDate(str) {
   if (parts.length !== 3) return null;
 
   // If first part > 12, it's DD/MM/YYYY
+  let date;
   if (parseInt(parts[0]) > 12) {
-    return new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
+    date = new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
+  } else {
+    date = new Date(str);
   }
-  return new Date(str);
+
+  // SHIFT: If year is 2023 or earlier, shift to 2026 for forecasting demos
+  if (date && date.getFullYear() <= 2023) {
+    const yearDifference = 2026 - date.getFullYear();
+    date.setFullYear(2026);
+    // Adjust to last 90 days for better forecast accuracy
+    const daysAgo = Math.floor(Math.random() * 85); // 0-85 days in past
+    date.setDate(date.getDate() - daysAgo);
+  }
+
+  return date;
 }
 
 // ── Numeric parser (handles EMPTY, blanks) ──────────────────────────

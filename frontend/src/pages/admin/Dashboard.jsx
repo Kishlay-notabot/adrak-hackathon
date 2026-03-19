@@ -6,6 +6,7 @@ import { AdminSidebar } from "@/components/admin/sidebar"
 import { StatsCard } from "@/components/stats-card"
 import { PatientVisitsChart } from "@/components/admin/patient-visits-chart"
 import { AdmissionFlowChart } from "@/components/admin/admission-flow-chart"
+import { PatientFlowForecastChart } from "@/components/admin/patient-flow-forecast"
 import { PatientsTable } from "@/components/admin/patients-table"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -88,6 +89,9 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <PatientVisitsChart />
                 <AdmissionFlowChart />
+              </div>
+              <div className="mb-6">
+                <PatientFlowForecastChart />
               </div>
               <PatientsTable />
             </>
