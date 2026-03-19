@@ -15,6 +15,7 @@ app.use("/api/medical-records", require("./routes/medical-record"));
 app.use("/api/resources", require("./routes/resource"));
 app.use("/api/forecast", require("./routes/forecast"));
 app.use("/api/referral", require("./routes/referral"));
+app.use("/api/payment", require("./routes/payment"));
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 // ── Start ───────────────────────────────────────────────────────────
