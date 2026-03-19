@@ -1,3 +1,4 @@
+// backend/server.js
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -12,6 +13,7 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/patient", require("./routes/patient"));
 app.use("/api/hospital", require("./routes/hospital"));
 app.use("/api/admission", require("./routes/admission"));
+app.use("/api/medical-records", require("./routes/medical-record"));
 
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));

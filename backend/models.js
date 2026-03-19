@@ -1,9 +1,10 @@
+// backend/models.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 // ─── Counter (auto-increment helper for PID-00001 style IDs) ────────
 const counterSchema = new Schema({
-  _id: { type: String, required: true }, // e.g. "patient_pid"
+  _id: { type: String, required: true },
   seq: { type: Number, default: 0 },
 });
 const Counter = mongoose.model("Counter", counterSchema);
@@ -18,11 +19,9 @@ async function getNextPid() {
 }
 
 // ─── Patient ────────────────────────────────────────────────────────
-// End-user. QR code encodes /patient/:_id (generated client-side).
-// Hospitals scan it to view remarks — the passive referral trail.
 const patientSchema = new Schema(
   {
-    pid: { type: String, unique: true }, // human-readable ID: PID-00001
+    pid: { type: String, unique: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
@@ -34,6 +33,7 @@ const patientSchema = new Schema(
       type: String,
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
     },
+    residenceType: { type: String, enum: ["Urban", "Rural"] },
     allergies: [{ type: String, trim: true }],
     medicalConditions: [{ type: String, trim: true }],
     address: {
@@ -42,9 +42,6 @@ const patientSchema = new Schema(
       state: String,
       pincode: String,
     },
-
-    // QR code is generated client-side from the patient's profile URL (/patient/:_id)
-    // passive referral / transfer remarks left by hospital admins
     remarks: [
       {
         hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
@@ -60,7 +57,6 @@ const patientSchema = new Schema(
   { timestamps: true }
 );
 
-// Auto-generate PID before first save
 patientSchema.pre("save", async function (next) {
   if (this.isNew && !this.pid) {
     this.pid = await getNextPid();
@@ -69,8 +65,6 @@ patientSchema.pre("save", async function (next) {
 });
 
 // ─── Admin ──────────────────────────────────────────────────────────
-// Hospital staff. First admin to sign up creates the hospital entity.
-// hospitalId is optional so an admin can register first, then create/join a hospital.
 const adminSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -86,7 +80,6 @@ const adminSchema = new Schema(
 );
 
 // ─── Hospital ───────────────────────────────────────────────────────
-// Capacity, OPDs, and GeoJSON location for $near queries.
 const hospitalSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -101,7 +94,7 @@ const hospitalSchema = new Schema(
     },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], required: true }, // [lng, lat]
+      coordinates: { type: [Number], required: true },
     },
     beds: {
       general: { total: { type: Number, default: 0 }, available: { type: Number, default: 0 } },
@@ -126,8 +119,6 @@ const hospitalSchema = new Schema(
 hospitalSchema.index({ location: "2dsphere" });
 
 // ─── Admission ──────────────────────────────────────────────────────
-// Tracks each patient visit/stay at a hospital. Powers the patients
-// table on the admin dashboard and the "Recent Visits" on patient side.
 const admissionSchema = new Schema(
   {
     patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
@@ -137,13 +128,19 @@ const admissionSchema = new Schema(
     ward: { type: String, trim: true },
     reason: { type: String, trim: true },
     opdName: { type: String, trim: true },
+    admissionType: { type: String, enum: ["Emergency", "OPD"], default: "Emergency" },
+    isEmergency: { type: Boolean, default: false },
     status: {
       type: String,
-      enum: ["admitted", "discharged", "critical"],
+      enum: ["admitted", "discharged", "critical", "expired", "dama"],
       default: "admitted",
     },
     admittedAt: { type: Date, default: Date.now },
     dischargedAt: { type: Date, default: null },
+    lengthOfStayHours: { type: Number },
+    icuStayDuration: { type: Number },
+    comorbidityScore: { type: Number },
+    serviceIntensity: { type: Number },
   },
   { timestamps: true }
 );
@@ -151,8 +148,73 @@ const admissionSchema = new Schema(
 admissionSchema.index({ hospitalId: 1, status: 1 });
 admissionSchema.index({ patientId: 1, admittedAt: -1 });
 
+// ─── Medical Record ─────────────────────────────────────────────────
+// Lab data and clinical observations — created after admission
+const medicalRecordSchema = new Schema(
+  {
+    patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    admissionId: { type: Schema.Types.ObjectId, ref: "Admission", required: true },
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+
+    // Lab values
+    hb: { type: Number },          // Hemoglobin
+    tlc: { type: Number },         // Total Leucocyte Count
+    platelets: { type: Number },
+    glucose: { type: Number },
+    urea: { type: Number },
+    creatinine: { type: Number },
+    bnp: { type: Number },         // Brain Natriuretic Peptide
+    raisedCardiacEnzymes: { type: Boolean, default: false },
+    ef: { type: Number },          // Ejection Fraction
+
+    // Pre-existing conditions (boolean flags)
+    smoking: { type: Boolean, default: false },
+    alcohol: { type: Boolean, default: false },
+    diabetes: { type: Boolean, default: false },       // DM
+    hypertension: { type: Boolean, default: false },   // HTN
+    cad: { type: Boolean, default: false },            // Coronary Artery Disease
+    priorCmp: { type: Boolean, default: false },       // Prior Cardiomyopathy
+    ckd: { type: Boolean, default: false },            // Chronic Kidney Disease
+
+    // Diagnosis flags
+    severeAnaemia: { type: Boolean, default: false },
+    anaemia: { type: Boolean, default: false },
+    stableAngina: { type: Boolean, default: false },
+    acs: { type: Boolean, default: false },
+    stemi: { type: Boolean, default: false },
+    atypicalChestPain: { type: Boolean, default: false },
+    heartFailure: { type: Boolean, default: false },
+    hfref: { type: Boolean, default: false },
+    hfnef: { type: Boolean, default: false },
+    valvular: { type: Boolean, default: false },
+    chb: { type: Boolean, default: false },
+    sss: { type: Boolean, default: false },
+    aki: { type: Boolean, default: false },
+    cvaInfarct: { type: Boolean, default: false },
+    cvaBleed: { type: Boolean, default: false },
+    af: { type: Boolean, default: false },
+    vt: { type: Boolean, default: false },
+    psvt: { type: Boolean, default: false },
+    congenital: { type: Boolean, default: false },
+    uti: { type: Boolean, default: false },
+    neuroCardiogenicSyncope: { type: Boolean, default: false },
+    orthostatic: { type: Boolean, default: false },
+    infectiveEndocarditis: { type: Boolean, default: false },
+    dvt: { type: Boolean, default: false },
+    cardiogenicShock: { type: Boolean, default: false },
+    shock: { type: Boolean, default: false },
+    pulmonaryEmbolism: { type: Boolean, default: false },
+    chestInfection: { type: Boolean, default: false },
+
+    recordedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+medicalRecordSchema.index({ patientId: 1 });
+medicalRecordSchema.index({ admissionId: 1 });
+
 // ─── Patient Inflow ─────────────────────────────────────────────────
-// One doc per hospital per day. Powers the monthly footfall graph.
 const patientInflowSchema = new Schema(
   {
     hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
@@ -169,6 +231,7 @@ module.exports = {
   Admin: mongoose.model("Admin", adminSchema),
   Hospital: mongoose.model("Hospital", hospitalSchema),
   Admission: mongoose.model("Admission", admissionSchema),
+  MedicalRecord: mongoose.model("MedicalRecord", medicalRecordSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
   Counter,
 };
