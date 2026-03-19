@@ -463,15 +463,3 @@ VITE_API_URL=http://localhost:5000/api   # frontend .env
 ```
 
 ---
-
-## 7. Seeding
-
-```bash
-# Seed resource data from CSV
-cd backend
-node routes/seed-resources.js                  # auto-detect CSV in data/
-node routes/seed-resources.js --clear          # wipe existing + re-seed
-node routes/seed-resources.js --file=custom.csv
-```
-
-Requires a "HDHI Seed Hospital" to exist first (created by a separate `seed.js` script). Inserts hourly ResourceStatus snapshots in batches of 500.
