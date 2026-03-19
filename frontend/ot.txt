@@ -1,0 +1,870 @@
+diff --git a/backend/models.js b/backend/models.js
+index 74db74e..a31c532 100644
+--- a/backend/models.js
++++ b/backend/models.js
+@@ -207,42 +207,28 @@ medicalRecordSchema.index({ patientId: 1 });
+ medicalRecordSchema.index({ admissionId: 1 });
+ 
+ // ─── Resource Status ────────────────────────────────────────────────
+-// Hourly snapshots of hospital resource utilization.
+-// Seeded from hospital_resource_data CSV.
+ const resourceStatusSchema = new Schema(
+   {
+     hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+     timestamp: { type: Date, required: true },
+-
+-    // Beds
+     totalBeds: { type: Number, default: 0 },
+     occupiedBeds: { type: Number, default: 0 },
+     availableBeds: { type: Number, default: 0 },
+-
+-    // ICU
+     totalIcuBeds: { type: Number, default: 0 },
+     occupiedIcuBeds: { type: Number, default: 0 },
+     availableIcuBeds: { type: Number, default: 0 },
+-
+-    // Staff
+     totalDoctors: { type: Number, default: 0 },
+     availableDoctors: { type: Number, default: 0 },
+     totalNurses: { type: Number, default: 0 },
+     availableNurses: { type: Number, default: 0 },
+-
+-    // Equipment
+     ventilatorsTotal: { type: Number, default: 0 },
+     ventilatorsInUse: { type: Number, default: 0 },
+     oxygenUnitsTotal: { type: Number, default: 0 },
+     oxygenUnitsInUse: { type: Number, default: 0 },
+-
+-    // Patient flow
+     incomingPatients: { type: Number, default: 0 },
+     dischargedPatients: { type: Number, default: 0 },
+     emergencyCases: { type: Number, default: 0 },
+     opdCases: { type: Number, default: 0 },
+-
+-    // Metrics
+     avgWaitTimeMinutes: { type: Number, default: 0 },
+     avgTreatmentTimeMinutes: { type: Number, default: 0 },
+     bedTurnoverRate: { type: Number, default: 0 },
+@@ -268,6 +254,37 @@ const patientInflowSchema = new Schema(
+ );
+ patientInflowSchema.index({ hospitalId: 1, date: 1 }, { unique: true });
+ 
++// ─── Referral ───────────────────────────────────────────────────────
++// Inter-hospital patient referral tracking.
++const referralSchema = new Schema(
++  {
++    patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
++    admissionId: { type: Schema.Types.ObjectId, ref: "Admission" },
++    fromHospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
++    toHospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
++    referredBy: { type: Schema.Types.ObjectId, ref: "Admin", required: true },
++    respondedBy: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
++    reason: { type: String, trim: true },
++    notes: { type: String, trim: true },
++    urgency: {
++      type: String,
++      enum: ["low", "medium", "high", "critical"],
++      default: "medium",
++    },
++    status: {
++      type: String,
++      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
++      default: "pending",
++    },
++    respondedAt: { type: Date, default: null },
++  },
++  { timestamps: true }
++);
++
++referralSchema.index({ fromHospitalId: 1, status: 1 });
++referralSchema.index({ toHospitalId: 1, status: 1 });
++referralSchema.index({ patientId: 1 });
++
+ module.exports = {
+   Patient: mongoose.model("Patient", patientSchema),
+   Admin: mongoose.model("Admin", adminSchema),
+@@ -276,5 +293,6 @@ module.exports = {
+   MedicalRecord: mongoose.model("MedicalRecord", medicalRecordSchema),
+   ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
+   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
++  Referral: mongoose.model("Referral", referralSchema),
+   Counter,
+-};
++};
+\ No newline at end of file
+diff --git a/backend/routes/hospital.js b/backend/routes/hospital.js
+index bbeb916..48bbeff 100644
+--- a/backend/routes/hospital.js
++++ b/backend/routes/hospital.js
+@@ -12,10 +12,26 @@ function refreshToken(admin) {
+   );
+ }
+ 
++// ── GET /api/hospital/all ───────────────────────────────────────────
++// List all active hospitals in the medflow network (for referral dropdown).
++// Excludes the requesting admin's own hospital.
++router.get("/all", auth, requireRole("admin"), requireHospital, async (req, res) => {
++  try {
++    const hospitals = await Hospital.find({
++      _id: { $ne: req.user.hospitalId },
++      isActive: true,
++    })
++      .select("name address phone beds")
++      .sort({ name: 1 })
++      .lean();
++
++    res.json(hospitals);
++  } catch (err) {
++    res.status(500).json({ error: err.message });
++  }
++});
++
+ // ── POST /api/hospital/create ───────────────────────────────────────
+-// Admin creates a new hospital and gets linked to it.
+-// Called after admin signup when they're ready to register their hospital.
+-// Body: { name, registrationNumber?, phone, email?, address, coordinates:[lng,lat], beds?, opds? }
+ router.post("/create", auth, requireRole("admin"), async (req, res) => {
+   try {
+     const admin = await Admin.findById(req.user.id);
+@@ -37,7 +53,6 @@ router.post("/create", auth, requireRole("admin"), async (req, res) => {
+       opds: opds || [],
+     });
+ 
+-    // link admin to the new hospital
+     admin.hospitalId = hospital._id;
+     await admin.save();
+ 
+@@ -48,8 +63,6 @@ router.post("/create", auth, requireRole("admin"), async (req, res) => {
+ });
+ 
+ // ── POST /api/hospital/join ─────────────────────────────────────────
+-// Admin joins an existing hospital by its ID.
+-// Body: { hospitalId }
+ router.post("/join", auth, requireRole("admin"), async (req, res) => {
+   try {
+     const admin = await Admin.findById(req.user.id);
+@@ -69,7 +82,6 @@ router.post("/join", auth, requireRole("admin"), async (req, res) => {
+ });
+ 
+ // ── GET /api/hospital/mine ──────────────────────────────────────────
+-// Admin views their own hospital dashboard data.
+ router.get("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const hospital = await Hospital.findById(req.user.hospitalId);
+@@ -81,7 +93,6 @@ router.get("/mine", auth, requireRole("admin"), requireHospital, async (req, res
+ });
+ 
+ // ── PUT /api/hospital/mine ──────────────────────────────────────────
+-// Update hospital details (beds, OPDs, contact info, etc.).
+ router.put("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const hospital = await Hospital.findByIdAndUpdate(req.user.hospitalId, req.body, {
+@@ -96,8 +107,6 @@ router.put("/mine", auth, requireRole("admin"), requireHospital, async (req, res
+ });
+ 
+ // ── PATCH /api/hospital/mine/beds ───────────────────────────────────
+-// Quick bed availability update.
+-// Body: { general: { available: 10 }, icu: { available: 3 } }
+ router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const setBeds = {};
+@@ -118,7 +127,6 @@ router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (r
+ });
+ 
+ // ── PATCH /api/hospital/mine/opds ───────────────────────────────────
+-// Update a specific OPD. Body: { opdId, currentLoad?, isActive? }
+ router.patch("/mine/opds", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const { opdId, ...fields } = req.body;
+@@ -141,8 +149,6 @@ router.patch("/mine/opds", auth, requireRole("admin"), requireHospital, async (r
+ });
+ 
+ // ── GET /api/hospital/nearby ────────────────────────────────────────
+-// Surrounding hospitals sorted by distance. Excludes own.
+-// Query: ?lng=77.21&lat=28.63&maxDistance=10000 (meters, default 10km)
+ router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const { lng, lat, maxDistance = 10000 } = req.query;
+@@ -166,20 +172,17 @@ router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, r
+ });
+ 
+ // ── GET /api/hospital/inflow/stats ──────────────────────────────────
+-// Monthly footfall for the dashboard chart.
+-// Query: ?months=6 (default 6)
+ router.get("/inflow/stats", auth, requireRole("admin"), requireHospital, async (req, res) => {
+   try {
+     const months = req.query.months === "all" ? null : (parseInt(req.query.months) || 6);
+-let since;
+-if (months) {
+-  since = new Date();
+-  since.setMonth(since.getMonth() - months);
+-} else {
+-  // Get earliest inflow date
+-  const earliest = await PatientInflow.findOne({ hospitalId: req.user.hospitalId }).sort({ date: 1 }).lean();
+-  since = earliest ? earliest.date : new Date();
+-}
++    let since;
++    if (months) {
++      since = new Date();
++      since.setMonth(since.getMonth() - months);
++    } else {
++      const earliest = await PatientInflow.findOne({ hospitalId: req.user.hospitalId }).sort({ date: 1 }).lean();
++      since = earliest ? earliest.date : new Date();
++    }
+     since.setDate(1);
+     since.setHours(0, 0, 0, 0);
+ 
+diff --git a/backend/server.js b/backend/server.js
+index 4b0ec3a..d02b167 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -3,11 +3,9 @@ require("dotenv").config();
+ const express = require("express");
+ const mongoose = require("mongoose");
+ const cors = require("cors");
+-
+ const app = express();
+ app.use(cors());
+ app.use(express.json());
+-
+ // ── Routes ──────────────────────────────────────────────────────────
+ app.use("/api/admin", require("./routes/admin"));
+ app.use("/api/patient", require("./routes/patient"));
+@@ -15,22 +13,20 @@ app.use("/api/hospital", require("./routes/hospital"));
+ app.use("/api/admission", require("./routes/admission"));
+ app.use("/api/medical-records", require("./routes/medical-record"));
+ app.use("/api/resources", require("./routes/resource"));
+-
++app.use("/api/referral", require("./routes/referral"));
+ // ── Health check ────────────────────────────────────────────────────
+ app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+-
+ // ── Start ───────────────────────────────────────────────────────────
+ const PORT = process.env.PORT || 5000;
+-
+ mongoose
+   .connect(process.env.MONGO_URI)
+   .then(() => {
+     console.log("MongoDB connected");
+     app.listen(PORT, "0.0.0.0", () => {
+-  console.log(`Server running on http://0.0.0.0:${PORT}`);
+-});
++      console.log(`Server running on http://0.0.0.0:${PORT}`);
++    });
+   })
+   .catch((err) => {
+     console.error("MongoDB connection error:", err);
+     process.exit(1);
+-  });
++  });
+\ No newline at end of file
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index e6982eb..b1be72f 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -18,6 +18,7 @@ import PatientProfile from './pages/patient/Profile'
+ import PatientQrCode from './pages/patient/QrCode'
+ import PatientAppointments from './pages/patient/Appointments'
+ import PatientRecords from './pages/patient/Records'
++import AdminReferrals from "@/pages/admin/Referrals"
+ 
+ function App() {
+   return (
+@@ -36,6 +37,7 @@ function App() {
+         <Route path="/admin/reports" element={<AdminReports />} />
+         <Route path="/admin/settings" element={<AdminSettings />} />
+         <Route path="/admin/hospital-setup" element={<AdminHospitalSetup />} />
++        <Route path="/admin/referrals" element={<AdminReferrals />} />
+ 
+         {/* Patient routes */}
+         <Route path="/patient/login" element={<PatientLogin />} />
+diff --git a/frontend/src/components/admin/patients-table.jsx b/frontend/src/components/admin/patients-table.jsx
+index ebc2b09..e78f0ae 100644
+--- a/frontend/src/components/admin/patients-table.jsx
++++ b/frontend/src/components/admin/patients-table.jsx
+@@ -18,9 +18,10 @@ import {
+   DialogTitle,
+ } from "@/components/ui/dialog"
+ import { cn } from "@/lib/utils"
+-import { Eye, QrCode, ChevronLeft, ChevronRight } from "lucide-react"
++import { Eye, QrCode, ChevronLeft, ChevronRight, ArrowRightLeft } from "lucide-react"
+ import { api } from "@/lib/api"
+ import { QRCodeCanvas } from "@/components/qr-code"
++import { ReferralModal } from "@/components/admin/referral-modal"
+ 
+ const tabs = ["All Patients", "Admitted", "Discharged", "Critical"]
+ 
+@@ -38,6 +39,10 @@ export function PatientsTable() {
+   const [viewLoading, setViewLoading] = useState(false)
+   const [qrPatient, setQrPatient] = useState(null)
+ 
++  // Referral modal state
++  const [referralPatient, setReferralPatient] = useState(null)
++  const [referralAdmissionId, setReferralAdmissionId] = useState(null)
++
+   useEffect(() => {
+     setPage(1)
+   }, [activeTab])
+@@ -88,6 +93,11 @@ export function PatientsTable() {
+     }
+   }
+ 
++  const handleOpenReferral = (patient, admissionId) => {
++    setReferralPatient(patient)
++    setReferralAdmissionId(admissionId || null)
++  }
++
+   const getStatusStyles = (status) => {
+     switch (status) {
+       case "admitted":
+@@ -193,6 +203,18 @@ export function PatientsTable() {
+                           >
+                             <QrCode className="w-4 h-4" />
+                           </button>
++                          {(patient.status === "admitted" || patient.status === "critical") && (
++                            <button
++                              onClick={() => handleOpenReferral(
++                                { _id: patient.patientId, name: patient.name, pid: patient.pid },
++                                patient.admissionId
++                              )}
++                              className="text-[#64748B] hover:text-[#2563EB]"
++                              title="Refer to another hospital"
++                            >
++                              <ArrowRightLeft className="w-4 h-4" />
++                            </button>
++                          )}
+                         </div>
+                       </TableCell>
+                     </TableRow>
+@@ -304,39 +326,57 @@ export function PatientsTable() {
+                   <p className="text-xs text-[#64748B] uppercase tracking-wide mb-2">Admission History (This Hospital)</p>
+                   <div className="space-y-2">
+                     {viewPatient.admissions.map((a) => (
+-                      <div key={a._id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] flex items-center justify-between">
+-                        <div>
+-                          <p className="text-sm text-[#0F172A]">{formatDate(a.admittedAt)}</p>
+-                          <p className="text-xs text-[#64748B]">{[a.doctor, a.ward, a.reason].filter(Boolean).join(" · ")}</p>
+-                        </div>
+-                        <div className="flex items-center gap-2">
++                      <div key={a._id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
++                        <div className="flex items-center justify-between mb-1">
++                          <div>
++                            <p className="text-sm text-[#0F172A]">{formatDate(a.admittedAt)}</p>
++                            <p className="text-xs text-[#64748B]">{[a.doctor, a.ward, a.reason].filter(Boolean).join(" · ")}</p>
++                          </div>
+                           <span className={cn("px-2 py-0.5 rounded text-xs font-medium capitalize", getStatusStyles(a.status))}>
+                             {a.status}
+                           </span>
++                        </div>
++                        <div className="flex items-center gap-2 mt-2">
+                           {a.status === "admitted" && (
+-  <>
+-    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+-      onClick={() => handleStatusChange(a._id, "discharged")}>
+-      Discharge
+-    </Button>
+-    <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+-      onClick={() => handleStatusChange(a._id, "critical")}>
+-      Mark Critical
+-    </Button>
+-  </>
+-)}
+-{a.status === "critical" && (
+-  <>
+-    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+-      onClick={() => handleStatusChange(a._id, "discharged")}>
+-      Discharge
+-    </Button>
+-    <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+-      onClick={() => handleStatusChange(a._id, "admitted")}>
+-      Downgrade
+-    </Button>
+-  </>
+-)}
++                            <>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
++                                onClick={() => handleStatusChange(a._id, "discharged")}>
++                                Discharge
++                              </Button>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
++                                onClick={() => handleStatusChange(a._id, "critical")}>
++                                Mark Critical
++                              </Button>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
++                                onClick={() => handleOpenReferral(
++                                  { _id: viewPatient._id, name: viewPatient.name, pid: viewPatient.pid },
++                                  a._id
++                                )}>
++                                <ArrowRightLeft className="w-3 h-3 mr-1" />
++                                Refer
++                              </Button>
++                            </>
++                          )}
++                          {a.status === "critical" && (
++                            <>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
++                                onClick={() => handleStatusChange(a._id, "discharged")}>
++                                Discharge
++                              </Button>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
++                                onClick={() => handleStatusChange(a._id, "admitted")}>
++                                Downgrade
++                              </Button>
++                              <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
++                                onClick={() => handleOpenReferral(
++                                  { _id: viewPatient._id, name: viewPatient.name, pid: viewPatient.pid },
++                                  a._id
++                                )}>
++                                <ArrowRightLeft className="w-3 h-3 mr-1" />
++                                Refer
++                              </Button>
++                            </>
++                          )}
+                         </div>
+                       </div>
+                     ))}
+@@ -366,6 +406,19 @@ export function PatientsTable() {
+           )}
+         </DialogContent>
+       </Dialog>
++
++      {/* Referral Modal */}
++      <ReferralModal
++        open={!!referralPatient}
++        onOpenChange={(open) => { if (!open) { setReferralPatient(null); setReferralAdmissionId(null) } }}
++        patient={referralPatient}
++        admissionId={referralAdmissionId}
++        onSuccess={() => {
++          setReferralPatient(null)
++          setReferralAdmissionId(null)
++          fetchPatients()
++        }}
++      />
+     </>
+   )
+ }
+\ No newline at end of file
+diff --git a/frontend/src/components/admin/sidebar.jsx b/frontend/src/components/admin/sidebar.jsx
+index 8d30479..ff1b7b6 100644
+--- a/frontend/src/components/admin/sidebar.jsx
++++ b/frontend/src/components/admin/sidebar.jsx
+@@ -1,4 +1,5 @@
+ // frontend/src/components/admin/sidebar.jsx
++import { useState, useEffect } from "react"
+ import { Link, useLocation, useNavigate } from "react-router-dom"
+ import { cn } from "@/lib/utils"
+ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+@@ -12,14 +13,17 @@ import {
+   Settings,
+   Phone,
+   LogOut,
++  ArrowRightLeft,
+ } from "lucide-react"
+-import { getUser, logout } from "@/lib/api"
++import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
++import { api } from "@/lib/api"
+ 
+ const navItems = [
+   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+   { href: "/admin/patients", label: "Patients", icon: Users },
+   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
+   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
++  { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
+   { href: "/admin/resources", label: "Resources", icon: Activity },
+ ]
+ 
+@@ -35,6 +39,25 @@ export function AdminSidebar() {
+   const user = getUser()
+   const initials = user?.name ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "AD"
+ 
++  const [pendingCount, setPendingCount] = useState(0)
++
++  useEffect(() => {
++    fetchPendingCount()
++    // Poll every 30 seconds for new referrals
++    const interval = setInterval(fetchPendingCount, 30000)
++    return () => clearInterval(interval)
++  }, [])
++
++  const fetchPendingCount = async () => {
++    try {
++      if (!isLoggedIn() || getRole() !== "admin") return
++      const data = await api("/referral/counts")
++      setPendingCount(data.incomingPending || 0)
++    } catch {
++      // silently ignore — sidebar shouldn't break if this fails
++    }
++  }
++
+   const handleLogout = () => {
+     logout()
+     navigate("/admin/login")
+@@ -67,7 +90,15 @@ export function AdminSidebar() {
+                 )}
+               >
+                 <item.icon className="w-5 h-5" />
+-                {item.label}
++                <span className="flex-1">{item.label}</span>
++                {item.badge && pendingCount > 0 && (
++                  <span className={cn(
++                    "min-w-[20px] h-5 flex items-center justify-center rounded-full text-[10px] font-bold px-1.5",
++                    isActive ? "bg-white text-black" : "bg-red-500 text-white"
++                  )}>
++                    {pendingCount}
++                  </span>
++                )}
+               </Link>
+             )
+           })}
+diff --git a/frontend/src/pages/admin/QrScanner.jsx b/frontend/src/pages/admin/QrScanner.jsx
+index 3829075..068650c 100644
+--- a/frontend/src/pages/admin/QrScanner.jsx
++++ b/frontend/src/pages/admin/QrScanner.jsx
+@@ -8,13 +8,10 @@ import { Button } from "@/components/ui/button"
+ import { Input } from "@/components/ui/input"
+ import { Label } from "@/components/ui/label"
+ import { QRCodeCanvas } from "@/components/qr-code"
+-import { Camera, AlertCircle } from "lucide-react"
++import { Camera, AlertCircle, ArrowRightLeft } from "lucide-react"
+ import { api, isLoggedIn, getRole } from "@/lib/api"
++import { ReferralModal } from "@/components/admin/referral-modal"
+ 
+-/**
+- * Extracts a 24-char hex Mongo ObjectId from whatever the QR encodes.
+- * Handles full URLs, paths like /patient/:id, or raw ObjectIds.
+- */
+ function extractPatientId(raw) {
+   const trimmed = raw.trim()
+   const match = trimmed.match(/(?:\/patient\/)?([a-f0-9]{24})/i)
+@@ -29,7 +26,6 @@ export default function QRScannerPage() {
+   const [loading, setLoading] = useState(false)
+   const [manualId, setManualId] = useState("")
+ 
+-  // Camera state
+   const [cameraReady, setCameraReady] = useState(false)
+   const [cameraError, setCameraError] = useState("")
+   const scannerRef = useRef(null)
+@@ -43,7 +39,11 @@ export default function QRScannerPage() {
+   const [admitForm, setAdmitForm] = useState({ doctor: "", ward: "", reason: "" })
+   const [admitLoading, setAdmitLoading] = useState(false)
+   const [admitSuccess, setAdmitSuccess] = useState("")
+-  const [statusLoading, setStatusLoading] = useState(null) // holds admissionId being updated
++  const [statusLoading, setStatusLoading] = useState(null)
++
++  // Referral modal state
++  const [referralOpen, setReferralOpen] = useState(false)
++  const [referralAdmissionId, setReferralAdmissionId] = useState(null)
+ 
+   useEffect(() => {
+     if (!isLoggedIn() || getRole() !== "admin") navigate("/admin/login")
+@@ -59,17 +59,11 @@ export default function QRScannerPage() {
+     async function startScanner() {
+       try {
+         const { Html5Qrcode } = await import("html5-qrcode")
+-
+-        // Wait longer for DOM to settle (React 19 Strict Mode double-mounts)
+         await new Promise((r) => setTimeout(r, 600))
+         if (cancelled) return
+ 
+         const el = document.getElementById("qr-reader")
+         if (!el) return
+-
+-        // Clear any leftover children from a previous mount/unmount cycle
+-        // html5-qrcode injects <video> and other elements that persist across
+-        // React Strict Mode's mount → unmount → remount in dev
+         el.innerHTML = ""
+ 
+         scanner = new Html5Qrcode("qr-reader", { verbose: false })
+@@ -77,31 +71,23 @@ export default function QRScannerPage() {
+ 
+         await scanner.start(
+           { facingMode: "environment" },
+-          {
+-            fps: 10,
+-            qrbox: { width: 220, height: 220 },
+-            aspectRatio: 1,
+-          },
++          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1 },
+           onScanSuccess,
+-          () => {} // ignore per-frame misses
++          () => {}
+         )
+ 
+         if (!cancelled) {
+           setCameraReady(true)
+           setCameraError("")
+         } else {
+-          // If cancelled during await, clean up immediately
+           if (scanner.isScanning) scanner.stop().catch(() => {})
+         }
+       } catch (err) {
+-        // Ignore abort errors from cleanup racing with start
+         if (cancelled) return
+         const msg = typeof err === "string" ? err : err?.message || ""
+         if (msg.includes("AbortError") || msg.includes("aborted")) return
+         console.warn("Camera start failed:", err)
+-        if (!cancelled) {
+-          setCameraError(msg || "Could not access camera")
+-        }
++        if (!cancelled) setCameraError(msg || "Could not access camera")
+       }
+     }
+ 
+@@ -110,23 +96,16 @@ export default function QRScannerPage() {
+     return () => {
+       cancelled = true
+       if (scanner) {
+-        try {
+-          if (scanner.isScanning) scanner.stop().catch(() => {})
+-        } catch {
+-          // scanner may already be in a bad state, ignore
+-        }
++        try { if (scanner.isScanning) scanner.stop().catch(() => {}) } catch {}
+       }
+       scannerRef.current = null
+       setCameraReady(false)
+     }
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [scanned])
+ 
+-  // ── QR decoded ──────────────────────────────────────────────────
+   const scanHandledRef = useRef(false)
+ 
+   async function onScanSuccess(decoded) {
+-    // Prevent duplicate fires while stop() is in-flight
+     if (scanHandledRef.current) return
+     scanHandledRef.current = true
+ 
+@@ -140,11 +119,10 @@ export default function QRScannerPage() {
+       handleLookup(patientId)
+     } else {
+       setError("Scanned QR does not contain a valid patient ID")
+-      scanHandledRef.current = false // allow retry
++      scanHandledRef.current = false
+     }
+   }
+ 
+-  // ── Fetch patient ───────────────────────────────────────────────
+   const handleLookup = async (patientId) => {
+     if (!patientId) return
+     setError("")
+@@ -160,7 +138,6 @@ export default function QRScannerPage() {
+     }
+   }
+ 
+-  // ── Reset (go back to scanner) ─────────────────────────────────
+   const handleReset = () => {
+     scanHandledRef.current = false
+     setScanned(false)
+@@ -173,9 +150,10 @@ export default function QRScannerPage() {
+     setAdmitSuccess("")
+     setCameraError("")
+     setCameraReady(false)
++    setReferralOpen(false)
++    setReferralAdmissionId(null)
+   }
+ 
+-  // ── Add remark ──────────────────────────────────────────────────
+   const handleAddRemark = async (e) => {
+     e.preventDefault()
+     setRemarkLoading(true)
+@@ -196,7 +174,6 @@ export default function QRScannerPage() {
+     }
+   }
+ 
+-  // ── Admit patient ───────────────────────────────────────────────
+   const handleAdmit = async (e) => {
+     e.preventDefault()
+     setAdmitLoading(true)
+@@ -208,7 +185,6 @@ export default function QRScannerPage() {
+       setAdmitSuccess("Patient admitted successfully!")
+       setAdmitForm({ doctor: "", ward: "", reason: "" })
+       setShowAdmitForm(false)
+-      // Refresh patient to show the new admission
+       const updated = await api(`/patient/${patient._id}`)
+       setPatient(updated)
+     } catch (err) {
+@@ -218,7 +194,6 @@ export default function QRScannerPage() {
+     }
+   }
+ 
+-  // ── Change admission status (discharge / mark critical) ────────
+   const handleStatusChange = async (admissionId, newStatus) => {
+     setStatusLoading(admissionId)
+     setError("")
+@@ -227,7 +202,6 @@ export default function QRScannerPage() {
+         method: "PATCH",
+         body: JSON.stringify({ status: newStatus }),
+       })
+-      // Refresh patient to reflect updated admission
+       const updated = await api(`/patient/${patient._id}`)
+       setPatient(updated)
+     } catch (err) {
+@@ -237,6 +211,13 @@ export default function QRScannerPage() {
+     }
+   }
+ 
++  const openReferralForAdmission = (admissionId) => {
++    setReferralAdmissionId(admissionId || null)
++    setReferralOpen(true)
++    setShowAdmitForm(false)
++    setShowRemarkForm(false)
++  }
++
+   return (
+     <div className="flex h-screen bg-[#F8FAFC]">
+       <AdminSidebar />
+@@ -249,8 +230,6 @@ export default function QRScannerPage() {
+                 <div className="flex flex-col items-center">
+                   <h2 className="text-xl font-semibold text-[#0F172A] mb-6">Scan Patient QR Code</h2>
+ 
+-                  {/* ── Camera viewfinder ──────────────────────────── */}
+-                  {/* Hide html5-qrcode's default UI (file upload, camera swap, border) */}
+                   <style>{`
+                     #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+                     #qr-reader img[alt="Info icon"] { display: none !important; }
+@@ -260,46 +239,30 @@ export default function QRScannerPage() {
+                     #qr-reader__scan_region { position: absolute !important; inset: 0 !important; min-height: 0 !important; }
+                   `}</style>
+                   <div className="relative w-72 h-72 rounded-xl overflow-hidden mb-6">
+-                    {/* html5-qrcode MUST have an empty div — it injects its own children */}
+-                    <div
+-                      id="qr-reader"
+-                      className="absolute inset-0 bg-[#0F172A]"
+-                    />
+-
+-                    {/* Corner brackets overlay (always on top of video) */}
++                    <div id="qr-reader" className="absolute inset-0 bg-[#0F172A]" />
+                     <div className="absolute inset-0 z-20 pointer-events-none">
+                       <div className="absolute top-4 left-4 w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
+                       <div className="absolute top-4 right-4 w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+                       <div className="absolute bottom-4 left-4 w-10 h-10 border-l-4 border-b-4 border-white rounded-bl-lg" />
+                       <div className="absolute bottom-4 right-4 w-10 h-10 border-r-4 border-b-4 border-white rounded-br-lg" />
+                     </div>
+-
+-                    {/* Loading placeholder while camera initializes */}
+                     {!cameraReady && !cameraError && (
+                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+                         <Camera className="w-10 h-10 text-white/30 animate-pulse" />
+                         <p className="text-white/40 text-xs mt-2">Starting camera…</p>
+                       </div>
+                     )}
+-
+-                    {/* Camera error state */}
+                     {cameraError && (
+                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none px-6">
+                         <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
+-                        <p className="text-white/70 text-xs text-center leading-relaxed">
+-                          {cameraError}
+-                        </p>
+-                        <p className="text-white/40 text-[10px] mt-2 text-center">
+-                          Use manual entry below instead
+-                        </p>
++                        <p className="text-white/70 text-xs text-center leading-relaxed">{cameraError}</p>
++                        <p className="text-white/40 text-[10px] mt-2 text-center">Use manual entry below instead</p>
+                       </div>
+                     )}
+                   </div>
+ 
+                   {cameraReady && (
+-                    <p className="text-green-600 text-xs mb-3 font-medium">
+-                      Camera active — point at a patient QR code
+-                    </p>
++                    <p className="text-green-600 text-xs mb-3 font-medium">Camera active — point at a patient QR code</p>
+                   )}
+ 
+                   <p className="text-[#64748B] text-sm mb-2">Enter Patient ID manually:</p>
+@@ -444,42 +407,34 @@ export default function QRScannerPage() {
+                                   </span>
+                                 </div>
+ 
+-                                {/* Status actions — only for active admissions */}
+                                 {(a.status === "admitted" || a.status === "critical") && (
+-                                  <div className="flex gap-2 pt-1 border-t border-[#E2E8F0]">
++                                  <div className="flex flex-wrap gap-2 pt-1 border-t border-[#E2E8F0]">
+                                     {a.status !== "discharged" && (
+-                                      <Button
+-                                        size="sm"
+-                                        variant="outline"
+-                                        className="text-xs h-7 border-[#E2E8F0]"
++                                      <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+                                         disabled={statusLoading === a._id}
+-                                        onClick={() => handleStatusChange(a._id, "discharged")}
+-                                      >
++                                        onClick={() => handleStatusChange(a._id, "discharged")}>
+                                         {statusLoading === a._id ? "..." : "Discharge"}
+                                       </Button>
+                                     )}
+                                     {a.status === "admitted" && (
+-                                      <Button
+-                                        size="sm"
+-                                        variant="outline"
+-                                        className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
++                                      <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+                                         disabled={statusLoading === a._id}
+-                                        onClick={() => handleStatusChange(a._id, "critical")}
+-                                      >
++                                        onClick={() => handleStatusChange(a._id, "critical")}>
+                                         {statusLoading === a._id ? "..." : "Mark Critical"}
+                                       </Button>
+                                     )}
+                                     {a.status === "critical" && (
+-                                      <Button
+-                                        size="sm"
+-                                        variant="outline"
+-                                        className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
++                                      <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+                                         disabled={statusLoading === a._id}
+-                                        onClick={() => handleStatusChange(a._id, "admitted")}
+-                                      >
++                                        onClick={() => handleStatusChange(a._id, "admitted")}>
+                                         {statusLoading === a._id ? "..." : "Downgrade to Admitted"}
+                                       </Button>
+                                     )}
++                                    <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
++                                      onClick={() => openReferralForAdmission(a._id)}>
++                                      <ArrowRightLeft className="w-3 h-3 mr-1" />
++                                      Refer
++                                    </Button>
+                                   </div>
+                                 )}
+ 
+@@ -503,6 +458,14 @@ export default function QRScannerPage() {
+                         <Button variant="outline" className="flex-1 border-[#E2E8F0]" onClick={() => { setShowRemarkForm(true); setShowAdmitForm(false) }}>
+                           Add Remark
+                         </Button>
++                        <Button
++                          variant="outline"
++                          className="flex-1 border-blue-200 text-blue-600 hover:bg-blue-50"
++                          onClick={() => openReferralForAdmission(null)}
++                        >
++                          <ArrowRightLeft className="w-4 h-4 mr-2" />
++                          Refer Patient
++                        </Button>
+                       </div>
+ 
+                       {showAdmitForm && (
+@@ -573,6 +536,23 @@ export default function QRScannerPage() {
+               )}
+             </CardContent>
+           </Card>
++
++          {/* Referral Modal */}
++          {patient && (
++            <ReferralModal
++              open={referralOpen}
++              onOpenChange={setReferralOpen}
++              patient={{ _id: patient._id, name: patient.name, pid: patient.pid }}
++              admissionId={referralAdmissionId}
++              onSuccess={async () => {
++                setReferralOpen(false)
++                setReferralAdmissionId(null)
++                // refresh patient data
++                const updated = await api(`/patient/${patient._id}`)
++                setPatient(updated)
++              }}
++            />
++          )}
+         </main>
+       </div>
+     </div>

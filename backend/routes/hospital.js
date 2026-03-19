@@ -12,10 +12,26 @@ function refreshToken(admin) {
   );
 }
 
+// ── GET /api/hospital/all ───────────────────────────────────────────
+// List all active hospitals in the medflow network (for referral dropdown).
+// Excludes the requesting admin's own hospital.
+router.get("/all", auth, requireRole("admin"), requireHospital, async (req, res) => {
+  try {
+    const hospitals = await Hospital.find({
+      _id: { $ne: req.user.hospitalId },
+      isActive: true,
+    })
+      .select("name address phone beds")
+      .sort({ name: 1 })
+      .lean();
+
+    res.json(hospitals);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/hospital/create ───────────────────────────────────────
-// Admin creates a new hospital and gets linked to it.
-// Called after admin signup when they're ready to register their hospital.
-// Body: { name, registrationNumber?, phone, email?, address, coordinates:[lng,lat], beds?, opds? }
 router.post("/create", auth, requireRole("admin"), async (req, res) => {
   try {
     const admin = await Admin.findById(req.user.id);
@@ -37,7 +53,6 @@ router.post("/create", auth, requireRole("admin"), async (req, res) => {
       opds: opds || [],
     });
 
-    // link admin to the new hospital
     admin.hospitalId = hospital._id;
     await admin.save();
 
@@ -48,8 +63,6 @@ router.post("/create", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── POST /api/hospital/join ─────────────────────────────────────────
-// Admin joins an existing hospital by its ID.
-// Body: { hospitalId }
 router.post("/join", auth, requireRole("admin"), async (req, res) => {
   try {
     const admin = await Admin.findById(req.user.id);
@@ -69,7 +82,6 @@ router.post("/join", auth, requireRole("admin"), async (req, res) => {
 });
 
 // ── GET /api/hospital/mine ──────────────────────────────────────────
-// Admin views their own hospital dashboard data.
 router.get("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const hospital = await Hospital.findById(req.user.hospitalId);
@@ -81,7 +93,6 @@ router.get("/mine", auth, requireRole("admin"), requireHospital, async (req, res
 });
 
 // ── PUT /api/hospital/mine ──────────────────────────────────────────
-// Update hospital details (beds, OPDs, contact info, etc.).
 router.put("/mine", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const hospital = await Hospital.findByIdAndUpdate(req.user.hospitalId, req.body, {
@@ -96,8 +107,6 @@ router.put("/mine", auth, requireRole("admin"), requireHospital, async (req, res
 });
 
 // ── PATCH /api/hospital/mine/beds ───────────────────────────────────
-// Quick bed availability update.
-// Body: { general: { available: 10 }, icu: { available: 3 } }
 router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const setBeds = {};
@@ -118,7 +127,6 @@ router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (r
 });
 
 // ── PATCH /api/hospital/mine/opds ───────────────────────────────────
-// Update a specific OPD. Body: { opdId, currentLoad?, isActive? }
 router.patch("/mine/opds", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const { opdId, ...fields } = req.body;
@@ -141,8 +149,6 @@ router.patch("/mine/opds", auth, requireRole("admin"), requireHospital, async (r
 });
 
 // ── GET /api/hospital/nearby ────────────────────────────────────────
-// Surrounding hospitals sorted by distance. Excludes own.
-// Query: ?lng=77.21&lat=28.63&maxDistance=10000 (meters, default 10km)
 router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const { lng, lat, maxDistance = 10000 } = req.query;
@@ -166,20 +172,17 @@ router.get("/nearby", auth, requireRole("admin"), requireHospital, async (req, r
 });
 
 // ── GET /api/hospital/inflow/stats ──────────────────────────────────
-// Monthly footfall for the dashboard chart.
-// Query: ?months=6 (default 6)
 router.get("/inflow/stats", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const months = req.query.months === "all" ? null : (parseInt(req.query.months) || 6);
-let since;
-if (months) {
-  since = new Date();
-  since.setMonth(since.getMonth() - months);
-} else {
-  // Get earliest inflow date
-  const earliest = await PatientInflow.findOne({ hospitalId: req.user.hospitalId }).sort({ date: 1 }).lean();
-  since = earliest ? earliest.date : new Date();
-}
+    let since;
+    if (months) {
+      since = new Date();
+      since.setMonth(since.getMonth() - months);
+    } else {
+      const earliest = await PatientInflow.findOne({ hospitalId: req.user.hospitalId }).sort({ date: 1 }).lean();
+      since = earliest ? earliest.date : new Date();
+    }
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 

@@ -207,42 +207,28 @@ medicalRecordSchema.index({ patientId: 1 });
 medicalRecordSchema.index({ admissionId: 1 });
 
 // ─── Resource Status ────────────────────────────────────────────────
-// Hourly snapshots of hospital resource utilization.
-// Seeded from hospital_resource_data CSV.
 const resourceStatusSchema = new Schema(
   {
     hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
     timestamp: { type: Date, required: true },
-
-    // Beds
     totalBeds: { type: Number, default: 0 },
     occupiedBeds: { type: Number, default: 0 },
     availableBeds: { type: Number, default: 0 },
-
-    // ICU
     totalIcuBeds: { type: Number, default: 0 },
     occupiedIcuBeds: { type: Number, default: 0 },
     availableIcuBeds: { type: Number, default: 0 },
-
-    // Staff
     totalDoctors: { type: Number, default: 0 },
     availableDoctors: { type: Number, default: 0 },
     totalNurses: { type: Number, default: 0 },
     availableNurses: { type: Number, default: 0 },
-
-    // Equipment
     ventilatorsTotal: { type: Number, default: 0 },
     ventilatorsInUse: { type: Number, default: 0 },
     oxygenUnitsTotal: { type: Number, default: 0 },
     oxygenUnitsInUse: { type: Number, default: 0 },
-
-    // Patient flow
     incomingPatients: { type: Number, default: 0 },
     dischargedPatients: { type: Number, default: 0 },
     emergencyCases: { type: Number, default: 0 },
     opdCases: { type: Number, default: 0 },
-
-    // Metrics
     avgWaitTimeMinutes: { type: Number, default: 0 },
     avgTreatmentTimeMinutes: { type: Number, default: 0 },
     bedTurnoverRate: { type: Number, default: 0 },
@@ -268,6 +254,37 @@ const patientInflowSchema = new Schema(
 );
 patientInflowSchema.index({ hospitalId: 1, date: 1 }, { unique: true });
 
+// ─── Referral ───────────────────────────────────────────────────────
+// Inter-hospital patient referral tracking.
+const referralSchema = new Schema(
+  {
+    patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    admissionId: { type: Schema.Types.ObjectId, ref: "Admission" },
+    fromHospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    toHospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    referredBy: { type: Schema.Types.ObjectId, ref: "Admin", required: true },
+    respondedBy: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
+    reason: { type: String, trim: true },
+    notes: { type: String, trim: true },
+    urgency: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+    },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "completed", "cancelled"],
+      default: "pending",
+    },
+    respondedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+referralSchema.index({ fromHospitalId: 1, status: 1 });
+referralSchema.index({ toHospitalId: 1, status: 1 });
+referralSchema.index({ patientId: 1 });
+
 module.exports = {
   Patient: mongoose.model("Patient", patientSchema),
   Admin: mongoose.model("Admin", adminSchema),
@@ -276,5 +293,6 @@ module.exports = {
   MedicalRecord: mongoose.model("MedicalRecord", medicalRecordSchema),
   ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
+  Referral: mongoose.model("Referral", referralSchema),
   Counter,
 };

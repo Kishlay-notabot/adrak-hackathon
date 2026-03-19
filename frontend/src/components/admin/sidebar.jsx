@@ -1,4 +1,5 @@
 // frontend/src/components/admin/sidebar.jsx
+import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -12,14 +13,17 @@ import {
   Settings,
   Phone,
   LogOut,
+  ArrowRightLeft,
 } from "lucide-react"
-import { getUser, logout } from "@/lib/api"
+import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
+import { api } from "@/lib/api"
 
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/patients", label: "Patients", icon: Users },
   { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
+  { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
 
@@ -34,6 +38,25 @@ export function AdminSidebar() {
   const pathname = location.pathname
   const user = getUser()
   const initials = user?.name ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "AD"
+
+  const [pendingCount, setPendingCount] = useState(0)
+
+  useEffect(() => {
+    fetchPendingCount()
+    // Poll every 30 seconds for new referrals
+    const interval = setInterval(fetchPendingCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const fetchPendingCount = async () => {
+    try {
+      if (!isLoggedIn() || getRole() !== "admin") return
+      const data = await api("/referral/counts")
+      setPendingCount(data.incomingPending || 0)
+    } catch {
+      // silently ignore — sidebar shouldn't break if this fails
+    }
+  }
 
   const handleLogout = () => {
     logout()
@@ -67,7 +90,15 @@ export function AdminSidebar() {
                 )}
               >
                 <item.icon className="w-5 h-5" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.badge && pendingCount > 0 && (
+                  <span className={cn(
+                    "min-w-[20px] h-5 flex items-center justify-center rounded-full text-[10px] font-bold px-1.5",
+                    isActive ? "bg-white text-black" : "bg-red-500 text-white"
+                  )}>
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             )
           })}
