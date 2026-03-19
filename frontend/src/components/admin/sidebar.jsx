@@ -21,14 +21,14 @@ import { api } from "@/lib/api"
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/patients", label: "Patients", icon: Users },
-  { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
+  //{ href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
   { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
 
 const managementItems = [
-  { href: "/admin/reports", label: "Reports", icon: FileText },
+  //{ href: "/admin/reports", label: "Reports", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
 
