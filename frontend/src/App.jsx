@@ -18,6 +18,7 @@ import PatientProfile from './pages/patient/Profile'
 import PatientQrCode from './pages/patient/QrCode'
 import PatientAppointments from './pages/patient/Appointments'
 import PatientRecords from './pages/patient/Records'
+import PatientPayment from './pages/patient/Payment'
 import AdminReferrals from "@/pages/admin/Referrals"
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
         <Route path="/patient/qr-code" element={<PatientQrCode />} />
         <Route path="/patient/appointments" element={<PatientAppointments />} />
         <Route path="/patient/records" element={<PatientRecords />} />
+        <Route path="/patient/payment" element={<PatientPayment />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

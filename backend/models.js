@@ -285,6 +285,26 @@ referralSchema.index({ fromHospitalId: 1, status: 1 });
 referralSchema.index({ toHospitalId: 1, status: 1 });
 referralSchema.index({ patientId: 1 });
 
+// ─── Payment ────────────────────────────────────────────────────────
+const paymentSchema = new Schema(
+  {
+    patientId:          { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    hospitalId:         { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    razorpayOrderId:    { type: String, required: true, unique: true },
+    razorpayPaymentId:  { type: String, default: null },
+    razorpaySignature:  { type: String, default: null },
+    amount:             { type: Number, required: true },
+    currency:           { type: String, default: "INR" },
+    status:             { type: String, enum: ["created", "paid", "failed"], default: "created" },
+    purpose:            { type: String, enum: ["consultation", "admission", "lab", "other"], default: "consultation" },
+    description:        { type: String },
+    paidAt:             { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+paymentSchema.index({ patientId: 1 });
+paymentSchema.index({ hospitalId: 1 });
+
 module.exports = {
   Patient: mongoose.model("Patient", patientSchema),
   Admin: mongoose.model("Admin", adminSchema),
@@ -294,5 +314,6 @@ module.exports = {
   ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
   Referral: mongoose.model("Referral", referralSchema),
+  Payment: mongoose.model("Payment", paymentSchema),
   Counter,
 };

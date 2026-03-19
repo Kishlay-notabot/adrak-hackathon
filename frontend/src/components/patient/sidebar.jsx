@@ -9,6 +9,7 @@ import {
   FileText,
   LogOut,
   Headphones,
+  IndianRupee,
 } from "lucide-react"
 import { getUser, logout } from "@/lib/api"
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/patient/qr-code", label: "My QR Code", icon: QrCode },
   { href: "/patient/appointments", label: "Appointments", icon: Calendar },
   { href: "/patient/records", label: "Medical Records", icon: FileText },
+  { href: "/patient/payment", label: "Pay Hospital", icon: IndianRupee },
 ]
 
 export function PatientSidebar() {
