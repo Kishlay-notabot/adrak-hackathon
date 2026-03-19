@@ -1,3 +1,4 @@
+// frontend/src/lib/api.js
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export async function api(path, options = {}) {
@@ -15,6 +16,18 @@ export async function api(path, options = {}) {
   const data = await res.json();
 
   if (!res.ok) {
+    // Auto-redirect to login on auth failures
+    if (res.status === 401) {
+      logout();
+      const role = localStorage.getItem("role");
+      if (role === "patient") {
+        window.location.href = "/patient/login";
+      } else {
+        window.location.href = "/admin/login";
+      }
+      throw new Error("Session expired. Please log in again.");
+    }
+
     throw new Error(data.error || "Something went wrong");
   }
 
@@ -46,5 +59,19 @@ export function logout() {
 }
 
 export function isLoggedIn() {
-  return !!localStorage.getItem("token");
+  const token = localStorage.getItem("token");
+  if (!token) return false;
+
+  // Check if JWT is expired client-side
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      logout();
+      return false;
+    }
+    return true;
+  } catch {
+    logout();
+    return false;
+  }
 }
