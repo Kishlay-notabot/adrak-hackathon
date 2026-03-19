@@ -94,7 +94,7 @@ export default function PatientQrCode() {
                 <div className="bg-[#F1F5F9] rounded-lg p-4">
                   <p className="text-sm text-[#0F172A] font-medium mb-1">How to use</p>
                   <p className="text-xs text-[#64748B]">
-                    Show this QR code at any MediCore-connected hospital.
+                    Show this QR code at any medflow-connected hospital.
                     Staff will scan it to instantly access your medical records
                     and history — no paperwork needed.
                   </p>

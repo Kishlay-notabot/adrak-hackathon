@@ -304,7 +304,7 @@ export default function QRScannerPage() {
 
                   <p className="text-[#64748B] text-sm mb-2">Enter Patient ID manually:</p>
                   <p className="text-xs text-[#64748B] mb-3">
-                    The patient's QR code encodes their ID. Ask the patient to show their QR from the MediCore app.
+                    The patient's QR code encodes their ID. Ask the patient to show their QR from the medflow app.
                   </p>
 
                   <div className="flex gap-2 w-full max-w-sm">
