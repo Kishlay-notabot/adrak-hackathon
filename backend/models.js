@@ -285,6 +285,131 @@ referralSchema.index({ fromHospitalId: 1, status: 1 });
 referralSchema.index({ toHospitalId: 1, status: 1 });
 referralSchema.index({ patientId: 1 });
 
+// ─── Medicine Inventory ──────────────────────────────────────────────
+// Tracks medicine stock, usage, and depletion patterns
+const medicineSchema = new Schema(
+  {
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    medicineName: { type: String, required: true, trim: true },
+    category: {
+      type: String,
+      enum: [
+        "antibiotic",
+        "fever",
+        "cardiac",
+        "diabetic",
+        "respiratory",
+        "pain",
+        "gastrointestinal",
+        "other",
+      ],
+      required: true,
+    },
+    manufacturer: { type: String, trim: true },
+    batchNumber: { type: String, trim: true },
+    expiryDate: { type: Date },
+    
+    // Stock information
+    totalStock: { type: Number, default: 0 }, // Total units available
+    minimumThreshold: { type: Number, default: 100 }, // Reorder point
+    reorderQuantity: { type: Number, default: 500 }, // Standard reorder amount
+    pricePerUnit: { type: Number, default: 0 },
+    
+    // Usage tracking
+    quantityUsed: { type: Number, default: 0 }, // Used today
+    dailyAverageUsage: { type: Number, default: 0 }, // 7-day rolling average
+    weeklyUsage: { type: Number, default: 0 }, // Total this week
+    monthlyUsage: { type: Number, default: 0 }, // Total this month
+    
+    // Depletion metrics
+    depletionRate: { type: Number, default: 0 }, // Units per day
+    daysUntilStockout: { type: Number, default: 0 }, // Calculated: totalStock / depletionRate
+    isDepletingFast: { type: Boolean, default: false }, // True if <7 days until stockout
+    isOutOfStock: { type: Boolean, default: false },
+    isLowStock: { type: Boolean, default: false }, // Below minimum threshold
+    
+    // Department/ward allocation
+    allocatedTo: [
+      {
+        department: String,
+        quantity: Number,
+        lastUpdated: { type: Date, default: Date.now },
+      },
+    ],
+    
+    // Timestamps
+    lastRestocked: { type: Date },
+    lastUsedAt: { type: Date, default: Date.now },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+medicineSchema.index({ hospitalId: 1, medicineName: 1 }, { unique: true });
+medicineSchema.index({ hospitalId: 1, category: 1 });
+medicineSchema.index({ hospitalId: 1, isDepletingFast: 1 });
+medicineSchema.index({ hospitalId: 1, isOutOfStock: 1 });
+medicineSchema.index({ hospitalId: 1, isLowStock: 1 });
+
+// ─── Medicine Usage Log ──────────────────────────────────────────────
+// Daily/hourly log of medicine usage for trend analysis
+const medicineUsageLogSchema = new Schema(
+  {
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", required: true },
+    date: { type: Date, required: true }, // Date of usage
+    hour: { type: Number }, // Hour of day (0-23)
+    department: { type: String },
+    quantityUsed: { type: Number, required: true },
+    stockRemaining: { type: Number },
+    patientCount: { type: Number },
+    emergencyCases: { type: Number, default: 0 },
+    opdCases: { type: Number, default: 0 },
+    season: String, // winter, summer, spring, fall
+    isWeekend: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+medicineUsageLogSchema.index({ hospitalId: 1, medicineId: 1, date: -1 });
+medicineUsageLogSchema.index({ date: -1 });
+medicineUsageLogSchema.index({ hospitalId: 1, department: 1 });
+
+// ─── Restocking Alert ───────────────────────────────────────────────
+// Tracks restock requests and recommendations
+const restockingAlertSchema = new Schema(
+  {
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", required: true },
+    medicineCategory: String,
+    medicineName: String,
+    currentStock: { type: Number },
+    recommendedQuantity: { type: Number },
+    reason: {
+      type: String,
+      enum: ["low_stock", "fast_depleting", "stockout_risk", "upcoming_disease"],
+      required: true,
+    },
+    urgency: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+    },
+    predictedDisease: String, // If this is related to disease prediction
+    status: {
+      type: String,
+      enum: ["pending", "ordered", "received", "resolved"],
+      default: "pending",
+    },
+    createdAt: { type: Date, default: Date.now },
+    resolvedAt: { type: Date },
+  },
+  { timestamps: true }
+);
+
+restockingAlertSchema.index({ hospitalId: 1, status: 1, urgency: -1 });
+restockingAlertSchema.index({ hospitalId: 1, createdAt: -1 });
+
 module.exports = {
   Patient: mongoose.model("Patient", patientSchema),
   Admin: mongoose.model("Admin", adminSchema),
@@ -294,5 +419,8 @@ module.exports = {
   ResourceStatus: mongoose.model("ResourceStatus", resourceStatusSchema),
   PatientInflow: mongoose.model("PatientInflow", patientInflowSchema),
   Referral: mongoose.model("Referral", referralSchema),
+  Medicine: mongoose.model("Medicine", medicineSchema),
+  MedicineUsageLog: mongoose.model("MedicineUsageLog", medicineUsageLogSchema),
+  RestockingAlert: mongoose.model("RestockingAlert", restockingAlertSchema),
   Counter,
 };
