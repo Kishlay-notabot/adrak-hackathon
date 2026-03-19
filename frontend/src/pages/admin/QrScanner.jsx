@@ -8,13 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { QRCodeCanvas } from "@/components/qr-code"
-import { Camera, AlertCircle } from "lucide-react"
+import { Camera, AlertCircle, ArrowRightLeft } from "lucide-react"
 import { api, isLoggedIn, getRole } from "@/lib/api"
+import { ReferralModal } from "@/components/admin/referral-modal"
 
-/**
- * Extracts a 24-char hex Mongo ObjectId from whatever the QR encodes.
- * Handles full URLs, paths like /patient/:id, or raw ObjectIds.
- */
 function extractPatientId(raw) {
   const trimmed = raw.trim()
   const match = trimmed.match(/(?:\/patient\/)?([a-f0-9]{24})/i)
@@ -29,7 +26,6 @@ export default function QRScannerPage() {
   const [loading, setLoading] = useState(false)
   const [manualId, setManualId] = useState("")
 
-  // Camera state
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState("")
   const scannerRef = useRef(null)
@@ -43,7 +39,11 @@ export default function QRScannerPage() {
   const [admitForm, setAdmitForm] = useState({ doctor: "", ward: "", reason: "" })
   const [admitLoading, setAdmitLoading] = useState(false)
   const [admitSuccess, setAdmitSuccess] = useState("")
-  const [statusLoading, setStatusLoading] = useState(null) // holds admissionId being updated
+  const [statusLoading, setStatusLoading] = useState(null)
+
+  // Referral modal state
+  const [referralOpen, setReferralOpen] = useState(false)
+  const [referralAdmissionId, setReferralAdmissionId] = useState(null)
 
   useEffect(() => {
     if (!isLoggedIn() || getRole() !== "admin") navigate("/admin/login")
@@ -59,17 +59,11 @@ export default function QRScannerPage() {
     async function startScanner() {
       try {
         const { Html5Qrcode } = await import("html5-qrcode")
-
-        // Wait longer for DOM to settle (React 19 Strict Mode double-mounts)
         await new Promise((r) => setTimeout(r, 600))
         if (cancelled) return
 
         const el = document.getElementById("qr-reader")
         if (!el) return
-
-        // Clear any leftover children from a previous mount/unmount cycle
-        // html5-qrcode injects <video> and other elements that persist across
-        // React Strict Mode's mount → unmount → remount in dev
         el.innerHTML = ""
 
         scanner = new Html5Qrcode("qr-reader", { verbose: false })
@@ -77,31 +71,23 @@ export default function QRScannerPage() {
 
         await scanner.start(
           { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: { width: 220, height: 220 },
-            aspectRatio: 1,
-          },
+          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1 },
           onScanSuccess,
-          () => {} // ignore per-frame misses
+          () => {}
         )
 
         if (!cancelled) {
           setCameraReady(true)
           setCameraError("")
         } else {
-          // If cancelled during await, clean up immediately
           if (scanner.isScanning) scanner.stop().catch(() => {})
         }
       } catch (err) {
-        // Ignore abort errors from cleanup racing with start
         if (cancelled) return
         const msg = typeof err === "string" ? err : err?.message || ""
         if (msg.includes("AbortError") || msg.includes("aborted")) return
         console.warn("Camera start failed:", err)
-        if (!cancelled) {
-          setCameraError(msg || "Could not access camera")
-        }
+        if (!cancelled) setCameraError(msg || "Could not access camera")
       }
     }
 
@@ -110,23 +96,16 @@ export default function QRScannerPage() {
     return () => {
       cancelled = true
       if (scanner) {
-        try {
-          if (scanner.isScanning) scanner.stop().catch(() => {})
-        } catch {
-          // scanner may already be in a bad state, ignore
-        }
+        try { if (scanner.isScanning) scanner.stop().catch(() => {}) } catch {}
       }
       scannerRef.current = null
       setCameraReady(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanned])
 
-  // ── QR decoded ──────────────────────────────────────────────────
   const scanHandledRef = useRef(false)
 
   async function onScanSuccess(decoded) {
-    // Prevent duplicate fires while stop() is in-flight
     if (scanHandledRef.current) return
     scanHandledRef.current = true
 
@@ -140,11 +119,10 @@ export default function QRScannerPage() {
       handleLookup(patientId)
     } else {
       setError("Scanned QR does not contain a valid patient ID")
-      scanHandledRef.current = false // allow retry
+      scanHandledRef.current = false
     }
   }
 
-  // ── Fetch patient ───────────────────────────────────────────────
   const handleLookup = async (patientId) => {
     if (!patientId) return
     setError("")
@@ -160,7 +138,6 @@ export default function QRScannerPage() {
     }
   }
 
-  // ── Reset (go back to scanner) ─────────────────────────────────
   const handleReset = () => {
     scanHandledRef.current = false
     setScanned(false)
@@ -173,9 +150,10 @@ export default function QRScannerPage() {
     setAdmitSuccess("")
     setCameraError("")
     setCameraReady(false)
+    setReferralOpen(false)
+    setReferralAdmissionId(null)
   }
 
-  // ── Add remark ──────────────────────────────────────────────────
   const handleAddRemark = async (e) => {
     e.preventDefault()
     setRemarkLoading(true)
@@ -196,7 +174,6 @@ export default function QRScannerPage() {
     }
   }
 
-  // ── Admit patient ───────────────────────────────────────────────
   const handleAdmit = async (e) => {
     e.preventDefault()
     setAdmitLoading(true)
@@ -208,7 +185,6 @@ export default function QRScannerPage() {
       setAdmitSuccess("Patient admitted successfully!")
       setAdmitForm({ doctor: "", ward: "", reason: "" })
       setShowAdmitForm(false)
-      // Refresh patient to show the new admission
       const updated = await api(`/patient/${patient._id}`)
       setPatient(updated)
     } catch (err) {
@@ -218,7 +194,6 @@ export default function QRScannerPage() {
     }
   }
 
-  // ── Change admission status (discharge / mark critical) ────────
   const handleStatusChange = async (admissionId, newStatus) => {
     setStatusLoading(admissionId)
     setError("")
@@ -227,7 +202,6 @@ export default function QRScannerPage() {
         method: "PATCH",
         body: JSON.stringify({ status: newStatus }),
       })
-      // Refresh patient to reflect updated admission
       const updated = await api(`/patient/${patient._id}`)
       setPatient(updated)
     } catch (err) {
@@ -235,6 +209,13 @@ export default function QRScannerPage() {
     } finally {
       setStatusLoading(null)
     }
+  }
+
+  const openReferralForAdmission = (admissionId) => {
+    setReferralAdmissionId(admissionId || null)
+    setReferralOpen(true)
+    setShowAdmitForm(false)
+    setShowRemarkForm(false)
   }
 
   return (
@@ -249,8 +230,6 @@ export default function QRScannerPage() {
                 <div className="flex flex-col items-center">
                   <h2 className="text-xl font-semibold text-[#0F172A] mb-6">Scan Patient QR Code</h2>
 
-                  {/* ── Camera viewfinder ──────────────────────────── */}
-                  {/* Hide html5-qrcode's default UI (file upload, camera swap, border) */}
                   <style>{`
                     #qr-reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
                     #qr-reader img[alt="Info icon"] { display: none !important; }
@@ -260,46 +239,30 @@ export default function QRScannerPage() {
                     #qr-reader__scan_region { position: absolute !important; inset: 0 !important; min-height: 0 !important; }
                   `}</style>
                   <div className="relative w-72 h-72 rounded-xl overflow-hidden mb-6">
-                    {/* html5-qrcode MUST have an empty div — it injects its own children */}
-                    <div
-                      id="qr-reader"
-                      className="absolute inset-0 bg-[#0F172A]"
-                    />
-
-                    {/* Corner brackets overlay (always on top of video) */}
+                    <div id="qr-reader" className="absolute inset-0 bg-[#0F172A]" />
                     <div className="absolute inset-0 z-20 pointer-events-none">
                       <div className="absolute top-4 left-4 w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
                       <div className="absolute top-4 right-4 w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
                       <div className="absolute bottom-4 left-4 w-10 h-10 border-l-4 border-b-4 border-white rounded-bl-lg" />
                       <div className="absolute bottom-4 right-4 w-10 h-10 border-r-4 border-b-4 border-white rounded-br-lg" />
                     </div>
-
-                    {/* Loading placeholder while camera initializes */}
                     {!cameraReady && !cameraError && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
                         <Camera className="w-10 h-10 text-white/30 animate-pulse" />
                         <p className="text-white/40 text-xs mt-2">Starting camera…</p>
                       </div>
                     )}
-
-                    {/* Camera error state */}
                     {cameraError && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none px-6">
                         <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
-                        <p className="text-white/70 text-xs text-center leading-relaxed">
-                          {cameraError}
-                        </p>
-                        <p className="text-white/40 text-[10px] mt-2 text-center">
-                          Use manual entry below instead
-                        </p>
+                        <p className="text-white/70 text-xs text-center leading-relaxed">{cameraError}</p>
+                        <p className="text-white/40 text-[10px] mt-2 text-center">Use manual entry below instead</p>
                       </div>
                     )}
                   </div>
 
                   {cameraReady && (
-                    <p className="text-green-600 text-xs mb-3 font-medium">
-                      Camera active — point at a patient QR code
-                    </p>
+                    <p className="text-green-600 text-xs mb-3 font-medium">Camera active — point at a patient QR code</p>
                   )}
 
                   <p className="text-[#64748B] text-sm mb-2">Enter Patient ID manually:</p>
@@ -444,42 +407,34 @@ export default function QRScannerPage() {
                                   </span>
                                 </div>
 
-                                {/* Status actions — only for active admissions */}
                                 {(a.status === "admitted" || a.status === "critical") && (
-                                  <div className="flex gap-2 pt-1 border-t border-[#E2E8F0]">
+                                  <div className="flex flex-wrap gap-2 pt-1 border-t border-[#E2E8F0]">
                                     {a.status !== "discharged" && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="text-xs h-7 border-[#E2E8F0]"
+                                      <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
                                         disabled={statusLoading === a._id}
-                                        onClick={() => handleStatusChange(a._id, "discharged")}
-                                      >
+                                        onClick={() => handleStatusChange(a._id, "discharged")}>
                                         {statusLoading === a._id ? "..." : "Discharge"}
                                       </Button>
                                     )}
                                     {a.status === "admitted" && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+                                      <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
                                         disabled={statusLoading === a._id}
-                                        onClick={() => handleStatusChange(a._id, "critical")}
-                                      >
+                                        onClick={() => handleStatusChange(a._id, "critical")}>
                                         {statusLoading === a._id ? "..." : "Mark Critical"}
                                       </Button>
                                     )}
                                     {a.status === "critical" && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+                                      <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
                                         disabled={statusLoading === a._id}
-                                        onClick={() => handleStatusChange(a._id, "admitted")}
-                                      >
+                                        onClick={() => handleStatusChange(a._id, "admitted")}>
                                         {statusLoading === a._id ? "..." : "Downgrade to Admitted"}
                                       </Button>
                                     )}
+                                    <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
+                                      onClick={() => openReferralForAdmission(a._id)}>
+                                      <ArrowRightLeft className="w-3 h-3 mr-1" />
+                                      Refer
+                                    </Button>
                                   </div>
                                 )}
 
@@ -502,6 +457,14 @@ export default function QRScannerPage() {
                         </Button>
                         <Button variant="outline" className="flex-1 border-[#E2E8F0]" onClick={() => { setShowRemarkForm(true); setShowAdmitForm(false) }}>
                           Add Remark
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1 border-blue-200 text-blue-600 hover:bg-blue-50"
+                          onClick={() => openReferralForAdmission(null)}
+                        >
+                          <ArrowRightLeft className="w-4 h-4 mr-2" />
+                          Refer Patient
                         </Button>
                       </div>
 
@@ -573,6 +536,23 @@ export default function QRScannerPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Referral Modal */}
+          {patient && (
+            <ReferralModal
+              open={referralOpen}
+              onOpenChange={setReferralOpen}
+              patient={{ _id: patient._id, name: patient.name, pid: patient.pid }}
+              admissionId={referralAdmissionId}
+              onSuccess={async () => {
+                setReferralOpen(false)
+                setReferralAdmissionId(null)
+                // refresh patient data
+                const updated = await api(`/patient/${patient._id}`)
+                setPatient(updated)
+              }}
+            />
+          )}
         </main>
       </div>
     </div>

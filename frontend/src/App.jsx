@@ -18,6 +18,7 @@ import PatientProfile from './pages/patient/Profile'
 import PatientQrCode from './pages/patient/QrCode'
 import PatientAppointments from './pages/patient/Appointments'
 import PatientRecords from './pages/patient/Records'
+import AdminReferrals from "@/pages/admin/Referrals"
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
         <Route path="/admin/reports" element={<AdminReports />} />
         <Route path="/admin/settings" element={<AdminSettings />} />
         <Route path="/admin/hospital-setup" element={<AdminHospitalSetup />} />
+        <Route path="/admin/referrals" element={<AdminReferrals />} />
 
         {/* Patient routes */}
         <Route path="/patient/login" element={<PatientLogin />} />

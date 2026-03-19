@@ -18,9 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { Eye, QrCode, ChevronLeft, ChevronRight } from "lucide-react"
+import { Eye, QrCode, ChevronLeft, ChevronRight, ArrowRightLeft } from "lucide-react"
 import { api } from "@/lib/api"
 import { QRCodeCanvas } from "@/components/qr-code"
+import { ReferralModal } from "@/components/admin/referral-modal"
 
 const tabs = ["All Patients", "Admitted", "Discharged", "Critical"]
 
@@ -37,6 +38,10 @@ export function PatientsTable() {
   const [viewPatient, setViewPatient] = useState(null)
   const [viewLoading, setViewLoading] = useState(false)
   const [qrPatient, setQrPatient] = useState(null)
+
+  // Referral modal state
+  const [referralPatient, setReferralPatient] = useState(null)
+  const [referralAdmissionId, setReferralAdmissionId] = useState(null)
 
   useEffect(() => {
     setPage(1)
@@ -86,6 +91,11 @@ export function PatientsTable() {
     } catch (err) {
       console.error("Failed to update status:", err.message)
     }
+  }
+
+  const handleOpenReferral = (patient, admissionId) => {
+    setReferralPatient(patient)
+    setReferralAdmissionId(admissionId || null)
   }
 
   const getStatusStyles = (status) => {
@@ -193,6 +203,18 @@ export function PatientsTable() {
                           >
                             <QrCode className="w-4 h-4" />
                           </button>
+                          {(patient.status === "admitted" || patient.status === "critical") && (
+                            <button
+                              onClick={() => handleOpenReferral(
+                                { _id: patient.patientId, name: patient.name, pid: patient.pid },
+                                patient.admissionId
+                              )}
+                              className="text-[#64748B] hover:text-[#2563EB]"
+                              title="Refer to another hospital"
+                            >
+                              <ArrowRightLeft className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -304,39 +326,57 @@ export function PatientsTable() {
                   <p className="text-xs text-[#64748B] uppercase tracking-wide mb-2">Admission History (This Hospital)</p>
                   <div className="space-y-2">
                     {viewPatient.admissions.map((a) => (
-                      <div key={a._id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-[#0F172A]">{formatDate(a.admittedAt)}</p>
-                          <p className="text-xs text-[#64748B]">{[a.doctor, a.ward, a.reason].filter(Boolean).join(" · ")}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
+                      <div key={a._id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                        <div className="flex items-center justify-between mb-1">
+                          <div>
+                            <p className="text-sm text-[#0F172A]">{formatDate(a.admittedAt)}</p>
+                            <p className="text-xs text-[#64748B]">{[a.doctor, a.ward, a.reason].filter(Boolean).join(" · ")}</p>
+                          </div>
                           <span className={cn("px-2 py-0.5 rounded text-xs font-medium capitalize", getStatusStyles(a.status))}>
                             {a.status}
                           </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
                           {a.status === "admitted" && (
-  <>
-    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
-      onClick={() => handleStatusChange(a._id, "discharged")}>
-      Discharge
-    </Button>
-    <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
-      onClick={() => handleStatusChange(a._id, "critical")}>
-      Mark Critical
-    </Button>
-  </>
-)}
-{a.status === "critical" && (
-  <>
-    <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
-      onClick={() => handleStatusChange(a._id, "discharged")}>
-      Discharge
-    </Button>
-    <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
-      onClick={() => handleStatusChange(a._id, "admitted")}>
-      Downgrade
-    </Button>
-  </>
-)}
+                            <>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+                                onClick={() => handleStatusChange(a._id, "discharged")}>
+                                Discharge
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-red-200 text-red-600 hover:bg-red-50"
+                                onClick={() => handleStatusChange(a._id, "critical")}>
+                                Mark Critical
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
+                                onClick={() => handleOpenReferral(
+                                  { _id: viewPatient._id, name: viewPatient.name, pid: viewPatient.pid },
+                                  a._id
+                                )}>
+                                <ArrowRightLeft className="w-3 h-3 mr-1" />
+                                Refer
+                              </Button>
+                            </>
+                          )}
+                          {a.status === "critical" && (
+                            <>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-[#E2E8F0]"
+                                onClick={() => handleStatusChange(a._id, "discharged")}>
+                                Discharge
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-green-200 text-green-600 hover:bg-green-50"
+                                onClick={() => handleStatusChange(a._id, "admitted")}>
+                                Downgrade
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-blue-200 text-blue-600 hover:bg-blue-50"
+                                onClick={() => handleOpenReferral(
+                                  { _id: viewPatient._id, name: viewPatient.name, pid: viewPatient.pid },
+                                  a._id
+                                )}>
+                                <ArrowRightLeft className="w-3 h-3 mr-1" />
+                                Refer
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -366,6 +406,19 @@ export function PatientsTable() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Referral Modal */}
+      <ReferralModal
+        open={!!referralPatient}
+        onOpenChange={(open) => { if (!open) { setReferralPatient(null); setReferralAdmissionId(null) } }}
+        patient={referralPatient}
+        admissionId={referralAdmissionId}
+        onSuccess={() => {
+          setReferralPatient(null)
+          setReferralAdmissionId(null)
+          fetchPatients()
+        }}
+      />
     </>
   )
 }
