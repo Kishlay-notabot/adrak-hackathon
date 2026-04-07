@@ -44,7 +44,7 @@ export default function AdminRegisterPage() {
         }),
       })
       setAuth(data.token, data.admin, "admin")
-      navigate("/admin/dashboard")
+      navigate("/admin/hospital-setup")
     } catch (err) {
       setError(err.message)
     } finally {
