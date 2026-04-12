@@ -1,5 +1,5 @@
 // frontend/src/components/admin/sidebar.jsx
-// MODIFIED — added Surge Intelligence + Predictions nav items
+// MODIFIED — added Surge Intelligence, Predictions, and Inventory nav items
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
@@ -7,16 +7,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   LayoutDashboard,
   Users,
-  Stethoscope,
   QrCode,
   Activity,
-  FileText,
   Settings,
   Phone,
   LogOut,
   ArrowRightLeft,
   Zap,
   TrendingUp,
+  Package,
 } from "lucide-react"
 import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
 import { api } from "@/lib/api"
@@ -24,16 +23,15 @@ import { api } from "@/lib/api"
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/patients", label: "Patients", icon: Users },
-  //{ href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
   { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
   { href: "/admin/surge", label: "Surge Intel", icon: Zap },
   { href: "/admin/predictions", label: "Predictions", icon: TrendingUp },
+  { href: "/admin/inventory", label: "Inventory", icon: Package },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
 
 const managementItems = [
-  //{ href: "/admin/reports", label: "Reports", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
 
@@ -48,7 +46,6 @@ export function AdminSidebar() {
 
   useEffect(() => {
     fetchPendingCount()
-    // Poll every 30 seconds for new referrals
     const interval = setInterval(fetchPendingCount, 30000)
     return () => clearInterval(interval)
   }, [])
@@ -59,7 +56,7 @@ export function AdminSidebar() {
       const data = await api("/referral/counts")
       setPendingCount(data.incomingPending || 0)
     } catch {
-      // silently ignore — sidebar shouldn't break if this fails
+      // silently ignore
     }
   }
 

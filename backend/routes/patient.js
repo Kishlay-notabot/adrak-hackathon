@@ -1,6 +1,9 @@
+// backend/routes/patient.js
+// MODIFIED — added POST /register-by-admin for hospital-side patient creation
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { Patient, Admission } = require("../models");
 const { auth, requireRole, requireHospital } = require("../middleware/auth");
 
@@ -36,6 +39,143 @@ router.post("/signup", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── POST /api/patient/register-by-admin ─────────────────────────────
+// Hospital admin creates a patient account directly.
+// Auto-generates a password if none provided.
+// Returns the plain password so the hospital can share it with the patient.
+router.post(
+  "/register-by-admin",
+  auth,
+  requireRole("admin"),
+  requireHospital,
+  async (req, res) => {
+    try {
+      const {
+        name,
+        email,
+        phone,
+        age,
+        gender,
+        bloodGroup,
+        password: providedPassword,
+        address,
+        allergies,
+        medicalConditions,
+      } = req.body;
+
+      if (!name || !email || !phone) {
+        return res
+          .status(400)
+          .json({ error: "name, email, and phone are required" });
+      }
+
+      // Check duplicate
+      const exists = await Patient.findOne({ email });
+      if (exists) {
+        return res.status(409).json({
+          error: "Email already registered",
+          existingPatient: {
+            id: exists._id,
+            pid: exists.pid,
+            name: exists.name,
+            email: exists.email,
+            phone: exists.phone,
+          },
+        });
+      }
+
+      // Auto-generate password if not provided — 8 char alphanumeric
+      const plainPassword =
+        providedPassword || crypto.randomBytes(4).toString("hex");
+
+      const hashed = await bcrypt.hash(plainPassword, 10);
+
+      const patient = await Patient.create({
+        name,
+        email: email.toLowerCase().trim(),
+        password: hashed,
+        phone,
+        age: age || null,
+        gender: gender || null,
+        bloodGroup: bloodGroup || null,
+        address: address || {},
+        allergies: allergies || [],
+        medicalConditions: medicalConditions || [],
+      });
+
+      res.status(201).json({
+        patient: {
+          id: patient._id,
+          pid: patient.pid,
+          name: patient.name,
+          email: patient.email,
+          phone: patient.phone,
+          age: patient.age,
+          gender: patient.gender,
+          bloodGroup: patient.bloodGroup,
+        },
+        credentials: {
+          email: patient.email,
+          password: plainPassword,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ── POST /api/patient/search ────────────────────────────────────────
+// Quick search by name, email, phone, or PID — for the new admit flow.
+router.post(
+  "/search",
+  auth,
+  requireRole("admin"),
+  requireHospital,
+  async (req, res) => {
+    try {
+      const { query } = req.body;
+      if (!query || query.trim().length < 2) {
+        return res.status(400).json({ error: "Search query too short" });
+      }
+
+      const q = query.trim();
+
+      // Try exact PID match first
+      if (/^PID-\d+$/i.test(q)) {
+        const patient = await Patient.findOne({ pid: q.toUpperCase() })
+          .select("pid name email phone age gender bloodGroup")
+          .lean();
+        return res.json(patient ? [patient] : []);
+      }
+
+      // Try ObjectId
+      if (/^[a-f0-9]{24}$/i.test(q)) {
+        const patient = await Patient.findById(q)
+          .select("pid name email phone age gender bloodGroup")
+          .lean();
+        return res.json(patient ? [patient] : []);
+      }
+
+      // Fuzzy search on name, email, phone
+      const patients = await Patient.find({
+        $or: [
+          { name: { $regex: q, $options: "i" } },
+          { email: { $regex: q, $options: "i" } },
+          { phone: { $regex: q, $options: "i" } },
+        ],
+      })
+        .select("pid name email phone age gender bloodGroup")
+        .limit(10)
+        .lean();
+
+      res.json(patients);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 // ── POST /api/patient/login ─────────────────────────────────────────
 router.post("/login", async (req, res) => {
