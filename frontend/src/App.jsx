@@ -1,7 +1,7 @@
 // frontend/src/App.jsx
+// MODIFIED — added /admin/surge, /admin/predictions, /admin/inventory routes
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { isLoggedIn, getRole, getUser } from "@/lib/api"
-
 import Landing from "./pages/Landing"
 import AdminLogin from "./pages/admin/Login"
 import AdminRegister from "./pages/admin/Register"
@@ -14,7 +14,9 @@ import AdminSettings from "./pages/admin/Settings"
 import AdminHospitalSetup from "./pages/admin/HospitalSetup"
 import AdminResources from "./pages/admin/Resources"
 import AdminReferrals from "./pages/admin/Referrals"
-
+import AdminSurge from "./pages/admin/SurgeIntelligence"
+import AdminPredictions from "./pages/admin/Predictions"
+import AdminInventory from "./pages/admin/Inventory"
 import PatientLogin from "./pages/patient/Login"
 import PatientRegister from "./pages/patient/Register"
 import PatientDashboard from "./pages/patient/Dashboard"
@@ -59,6 +61,9 @@ function App() {
         <Route path="/admin/reports" element={<AdminGuard><AdminReports /></AdminGuard>} />
         <Route path="/admin/settings" element={<AdminGuard><AdminSettings /></AdminGuard>} />
         <Route path="/admin/referrals" element={<AdminGuard><AdminReferrals /></AdminGuard>} />
+        <Route path="/admin/surge" element={<AdminGuard><AdminSurge /></AdminGuard>} />
+        <Route path="/admin/predictions" element={<AdminGuard><AdminPredictions /></AdminGuard>} />
+        <Route path="/admin/inventory" element={<AdminGuard><AdminInventory /></AdminGuard>} />
 
         {/* Patient — public */}
         <Route path="/patient/login" element={<PatientLogin />} />
