@@ -1,4 +1,5 @@
 // frontend/src/components/admin/sidebar.jsx
+// MODIFIED — added Surge Intelligence + Predictions nav items
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
@@ -14,6 +15,8 @@ import {
   Phone,
   LogOut,
   ArrowRightLeft,
+  Zap,
+  TrendingUp,
 } from "lucide-react"
 import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
 import { api } from "@/lib/api"
@@ -21,14 +24,16 @@ import { api } from "@/lib/api"
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/patients", label: "Patients", icon: Users },
-  { href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
+  //{ href: "/admin/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
   { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
+  { href: "/admin/surge", label: "Surge Intel", icon: Zap },
+  { href: "/admin/predictions", label: "Predictions", icon: TrendingUp },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
 
 const managementItems = [
-  { href: "/admin/reports", label: "Reports", icon: FileText },
+  //{ href: "/admin/reports", label: "Reports", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
 
