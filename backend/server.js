@@ -1,5 +1,5 @@
 // backend/server.js
-// MODIFIED — added /api/surge route
+// MODIFIED — added resource-request + access-request routes
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -19,7 +19,9 @@ app.use("/api/resources", require("./routes/resource"));
 app.use("/api/forecast", require("./routes/forecast"));
 app.use("/api/referral", require("./routes/referral"));
 app.use("/api/payment", require("./routes/payment"));
-app.use("/api/surge", require("./routes/surge"));           // ← NEW
+app.use("/api/surge", require("./routes/surge"));
+app.use("/api/resource-requests", require("./routes/resource-request"));  // NEW
+app.use("/api/access-requests", require("./routes/access-request"));      // NEW
 
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
