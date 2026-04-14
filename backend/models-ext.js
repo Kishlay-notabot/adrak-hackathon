@@ -1,5 +1,6 @@
 // backend/models-ext.js
-// NEW — extends models.js with ResourceRequest + AccessRequest
+// MODIFIED — added Appointment schema for patient booking system
+// Extends models.js with ResourceRequest + AccessRequest + Appointment
 // New routes import from here: require("../models-ext")
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
@@ -14,7 +15,7 @@ const resourceRequestSchema = new Schema(
     toHospitalId:   { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
     requestedBy:    { type: Schema.Types.ObjectId, ref: "Admin", required: true },
     respondedBy:    { type: Schema.Types.ObjectId, ref: "Admin", default: null },
-    type:           { type: String, enum: ["request", "offer"], required: true },  // request = need, offer = giving
+    type:           { type: String, enum: ["request", "offer"], required: true },
     resourceType:   { type: String, enum: ["beds", "icu_beds", "oxygen", "ventilators", "blood", "staff"], required: true },
     quantity:        { type: Number, required: true, min: 1 },
     urgency:        { type: String, enum: ["low", "medium", "high", "critical"], default: "medium" },
@@ -36,15 +37,38 @@ const accessRequestSchema = new Schema(
     reason:       { type: String, trim: true },
     status:       { type: String, enum: ["pending", "approved", "denied"], default: "pending" },
     respondedAt:  { type: Date, default: null },
-    expiresAt:    { type: Date, default: () => new Date(Date.now() + 7 * 24 * 3600000) }, // 7 days
+    expiresAt:    { type: Date, default: () => new Date(Date.now() + 7 * 24 * 3600000) },
   },
   { timestamps: true }
 );
 accessRequestSchema.index({ patientId: 1, status: 1 });
 accessRequestSchema.index({ hospitalId: 1, patientId: 1 });
 
+// ─── Appointment (patient booking system) ────────────────────────────
+const appointmentSchema = new Schema(
+  {
+    patientId:  { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    date:       { type: Date, required: true },       // midnight of appointment day
+    timeSlot:   { type: String, required: true },      // e.g. "09:00", "14:30"
+    reason:     { type: String, trim: true },
+    status: {
+      type: String,
+      enum: ["pending", "confirmed", "cancelled", "completed", "no-show"],
+      default: "pending",
+    },
+    cancelledBy: { type: String, enum: ["patient", "hospital"], default: null },
+    notes:       { type: String, trim: true },         // admin notes
+  },
+  { timestamps: true }
+);
+appointmentSchema.index({ hospitalId: 1, date: 1, timeSlot: 1 });
+appointmentSchema.index({ patientId: 1, date: -1 });
+appointmentSchema.index({ hospitalId: 1, status: 1 });
+
 module.exports = {
   ...originalModels,
   ResourceRequest: mongoose.model("ResourceRequest", resourceRequestSchema),
   AccessRequest:   mongoose.model("AccessRequest", accessRequestSchema),
+  Appointment:     mongoose.model("Appointment", appointmentSchema),
 };

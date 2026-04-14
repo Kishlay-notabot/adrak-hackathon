@@ -1,5 +1,5 @@
 // frontend/src/components/admin/sidebar.jsx
-// MODIFIED — added Surge Intelligence, Predictions, and Inventory nav items
+// MODIFIED — added Appointments nav item
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
@@ -16,6 +16,7 @@ import {
   Zap,
   TrendingUp,
   Package,
+  CalendarCheck,
 } from "lucide-react"
 import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
 import { api } from "@/lib/api"
@@ -24,7 +25,8 @@ const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/patients", label: "Patients", icon: Users },
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
-  { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: true },
+  { href: "/admin/appointments", label: "Appointments", icon: CalendarCheck, badge: "appointments" },
+  { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: "referrals" },
   { href: "/admin/surge", label: "Surge Intel", icon: Zap },
   { href: "/admin/predictions", label: "Predictions", icon: TrendingUp },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
@@ -43,21 +45,32 @@ export function AdminSidebar() {
   const initials = user?.name ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "AD"
 
   const [pendingCount, setPendingCount] = useState(0)
+  const [apptCount, setApptCount] = useState(0)
 
   useEffect(() => {
-    fetchPendingCount()
-    const interval = setInterval(fetchPendingCount, 30000)
+    fetchCounts()
+    const interval = setInterval(fetchCounts, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  const fetchPendingCount = async () => {
+  const fetchCounts = async () => {
     try {
       if (!isLoggedIn() || getRole() !== "admin") return
-      const data = await api("/referral/counts")
-      setPendingCount(data.incomingPending || 0)
+      const [refData, apptData] = await Promise.all([
+        api("/referral/counts").catch(() => ({ incomingPending: 0 })),
+        api("/appointments/hospital/counts").catch(() => ({ todayPending: 0 })),
+      ])
+      setPendingCount(refData.incomingPending || 0)
+      setApptCount(apptData.todayPending || 0)
     } catch {
       // silently ignore
     }
+  }
+
+  const getBadgeCount = (badgeKey) => {
+    if (badgeKey === "referrals") return pendingCount
+    if (badgeKey === "appointments") return apptCount
+    return 0
   }
 
   const handleLogout = () => {
@@ -80,6 +93,7 @@ export function AdminSidebar() {
         <div className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href
+            const badgeVal = item.badge ? getBadgeCount(item.badge) : 0
             return (
               <Link
                 key={item.href}
@@ -93,12 +107,12 @@ export function AdminSidebar() {
               >
                 <item.icon className="w-5 h-5" />
                 <span className="flex-1">{item.label}</span>
-                {item.badge && pendingCount > 0 && (
+                {badgeVal > 0 && (
                   <span className={cn(
                     "min-w-[20px] h-5 flex items-center justify-center rounded-full text-[10px] font-bold px-1.5",
                     isActive ? "bg-white text-black" : "bg-red-500 text-white"
                   )}>
-                    {pendingCount}
+                    {badgeVal}
                   </span>
                 )}
               </Link>

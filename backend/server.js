@@ -1,5 +1,5 @@
 // backend/server.js
-// MODIFIED — added resource-request + access-request routes
+// MODIFIED — added appointment route
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -20,8 +20,9 @@ app.use("/api/forecast", require("./routes/forecast"));
 app.use("/api/referral", require("./routes/referral"));
 app.use("/api/payment", require("./routes/payment"));
 app.use("/api/surge", require("./routes/surge"));
-app.use("/api/resource-requests", require("./routes/resource-request"));  // NEW
-app.use("/api/access-requests", require("./routes/access-request"));      // NEW
+app.use("/api/resource-requests", require("./routes/resource-request"));
+app.use("/api/access-requests", require("./routes/access-request"));
+app.use("/api/appointments", require("./routes/appointment"));  // NEW
 
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
