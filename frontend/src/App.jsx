@@ -15,7 +15,6 @@ import AdminHospitalSetup from "./pages/admin/HospitalSetup"
 import AdminResources from "./pages/admin/Resources"
 import AdminReferrals from "./pages/admin/Referrals"
 import AdminSurge from "./pages/admin/SurgeIntelligence"
-import AdminPredictions from "./pages/admin/Predictions"
 import AdminInventory from "./pages/admin/Inventory"
 import AdminAppointments from "./pages/admin/Appointments"
 import AdminEmergencyMap from "./pages/admin/EmergencyMap"
@@ -64,7 +63,6 @@ function App() {
         <Route path="/admin/settings" element={<AdminGuard><AdminSettings /></AdminGuard>} />
         <Route path="/admin/referrals" element={<AdminGuard><AdminReferrals /></AdminGuard>} />
         <Route path="/admin/surge" element={<AdminGuard><AdminSurge /></AdminGuard>} />
-        <Route path="/admin/predictions" element={<AdminGuard><AdminPredictions /></AdminGuard>} />
         <Route path="/admin/inventory" element={<AdminGuard><AdminInventory /></AdminGuard>} />
         <Route path="/admin/appointments" element={<AdminGuard><AdminAppointments /></AdminGuard>} />
         <Route path="/admin/emergency-map" element={<AdminGuard><AdminEmergencyMap /></AdminGuard>} />

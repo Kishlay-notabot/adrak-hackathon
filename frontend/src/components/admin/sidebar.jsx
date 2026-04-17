@@ -19,7 +19,6 @@ const navItems = [
   { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: "referrals" },
   { href: "/admin/emergency-map", label: "Emergency Map", icon: Map },
   { href: "/admin/surge", label: "Surge Intel", icon: Zap },
-  { href: "/admin/predictions", label: "Predictions", icon: TrendingUp },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
