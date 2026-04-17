@@ -1,9 +1,8 @@
 const router = require("express").Router();
 const jwt = require("jsonwebtoken");
-const { Hospital, Admin, PatientInflow } = require("../models");
+const { Hospital, Admin, PatientInflow, ResourceStatus } = require("../models");
 const { auth, requireRole, requireHospital } = require("../middleware/auth");
 
-// Helper: reissue token with updated hospitalId
 function refreshToken(admin) {
   return jwt.sign(
     { id: admin._id, role: "admin", hospitalId: admin.hospitalId },
@@ -13,8 +12,6 @@ function refreshToken(admin) {
 }
 
 // ── GET /api/hospital/all ───────────────────────────────────────────
-// List all active hospitals in the medflow network (for referral dropdown).
-// Excludes the requesting admin's own hospital.
 router.get("/all", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const hospitals = await Hospital.find({
@@ -121,6 +118,101 @@ router.patch("/mine/beds", auth, requireRole("admin"), requireHospital, async (r
       { new: true }
     );
     res.json(hospital.beds);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /api/hospital/mine/staff ──────────────────────────────────
+// NEW: Admin updates staff counts. Creates/updates today's ResourceStatus snapshot.
+// Body: { totalDoctors, availableDoctors, totalNurses, availableNurses }
+router.patch("/mine/staff", auth, requireRole("admin"), requireHospital, async (req, res) => {
+  try {
+    const hospitalId = req.user.hospitalId;
+    const { totalDoctors, availableDoctors, totalNurses, availableNurses } = req.body;
+
+    // Get the hospital's bed data to fill in bed fields
+    const hospital = await Hospital.findById(hospitalId).select("beds").lean();
+    const beds = hospital?.beds || {};
+    const totalBeds =
+      (beds.general?.total || 0) +
+      (beds.icu?.total || 0) +
+      (beds.emergency?.total || 0) +
+      (beds.pediatric?.total || 0) +
+      (beds.maternity?.total || 0);
+    const availBeds =
+      (beds.general?.available || 0) +
+      (beds.icu?.available || 0) +
+      (beds.emergency?.available || 0) +
+      (beds.pediatric?.available || 0) +
+      (beds.maternity?.available || 0);
+
+    // Find today's latest snapshot or create one
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const staffData = {
+      totalDoctors: parseInt(totalDoctors) || 0,
+      availableDoctors: parseInt(availableDoctors) || 0,
+      totalNurses: parseInt(totalNurses) || 0,
+      availableNurses: parseInt(availableNurses) || 0,
+    };
+
+    // Calculate staff load ratio
+    const totalStaff = staffData.totalDoctors + staffData.totalNurses;
+    const availStaff = staffData.availableDoctors + staffData.availableNurses;
+    staffData.staffLoadRatio = totalStaff > 0 ? parseFloat(((totalStaff - availStaff) / totalStaff).toFixed(2)) : 0;
+
+    const updated = await ResourceStatus.findOneAndUpdate(
+      {
+        hospitalId,
+        timestamp: { $gte: today, $lt: tomorrow },
+      },
+      {
+        $set: {
+          ...staffData,
+          totalBeds,
+          occupiedBeds: totalBeds - availBeds,
+          availableBeds: availBeds,
+          totalIcuBeds: beds.icu?.total || 0,
+          occupiedIcuBeds: (beds.icu?.total || 0) - (beds.icu?.available || 0),
+          availableIcuBeds: beds.icu?.available || 0,
+        },
+        $setOnInsert: {
+          hospitalId,
+          timestamp: new Date(),
+        },
+      },
+      { new: true, upsert: true }
+    );
+
+    res.json({
+      message: "Staff updated successfully",
+      staff: {
+        totalDoctors: updated.totalDoctors,
+        availableDoctors: updated.availableDoctors,
+        totalNurses: updated.totalNurses,
+        availableNurses: updated.availableNurses,
+        staffLoadRatio: updated.staffLoadRatio,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/hospital/mine/staff ────────────────────────────────────
+// Returns current staff numbers from latest ResourceStatus
+router.get("/mine/staff", auth, requireRole("admin"), requireHospital, async (req, res) => {
+  try {
+    const latest = await ResourceStatus.findOne({ hospitalId: req.user.hospitalId })
+      .sort({ timestamp: -1 })
+      .select("totalDoctors availableDoctors totalNurses availableNurses staffLoadRatio")
+      .lean();
+
+    res.json(latest || { totalDoctors: 0, availableDoctors: 0, totalNurses: 0, availableNurses: 0, staffLoadRatio: 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,5 +1,5 @@
 // frontend/src/App.jsx
-// MODIFIED — added /admin/appointments route
+// MODIFIED — added /admin/emergency-map route
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { isLoggedIn, getRole, getUser } from "@/lib/api"
 import Landing from "./pages/Landing"
@@ -18,6 +18,7 @@ import AdminSurge from "./pages/admin/SurgeIntelligence"
 import AdminPredictions from "./pages/admin/Predictions"
 import AdminInventory from "./pages/admin/Inventory"
 import AdminAppointments from "./pages/admin/Appointments"
+import AdminEmergencyMap from "./pages/admin/EmergencyMap"
 import PatientLogin from "./pages/patient/Login"
 import PatientRegister from "./pages/patient/Register"
 import PatientDashboard from "./pages/patient/Dashboard"
@@ -66,6 +67,7 @@ function App() {
         <Route path="/admin/predictions" element={<AdminGuard><AdminPredictions /></AdminGuard>} />
         <Route path="/admin/inventory" element={<AdminGuard><AdminInventory /></AdminGuard>} />
         <Route path="/admin/appointments" element={<AdminGuard><AdminAppointments /></AdminGuard>} />
+        <Route path="/admin/emergency-map" element={<AdminGuard><AdminEmergencyMap /></AdminGuard>} />
 
         {/* Patient — public */}
         <Route path="/patient/login" element={<PatientLogin />} />
