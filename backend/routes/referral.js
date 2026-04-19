@@ -131,6 +131,29 @@ router.get("/counts", auth, requireRole("admin"), requireHospital, async (req, r
   }
 });
 
+// ── GET /api/referral/my ────────────────────────────────────────────
+// Patient view: referrals created for the logged-in patient.
+router.get("/my", auth, requireRole("patient"), async (req, res) => {
+  try {
+    const referrals = await Referral.find({ patientId: req.user.id })
+      .sort({ createdAt: -1 })
+      .populate("fromHospitalId", "name")
+      .populate("toHospitalId", "name")
+      .lean();
+
+    res.json(
+      referrals.map((referral) => ({
+        patientId: referral.patientId,
+        fromHospital: referral.fromHospitalId?.name || referral.fromHospitalId,
+        toHospital: referral.toHospitalId?.name || referral.toHospitalId,
+        status: referral.status,
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── PATCH /api/referral/:id/respond ─────────────────────────────────
 // Target hospital accepts or rejects a referral.
 // Body: { action: "accepted" | "rejected" }
