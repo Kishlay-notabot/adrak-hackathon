@@ -141,11 +141,19 @@ router.get("/my", auth, requireRole("patient"), async (req, res) => {
       .populate("toHospitalId", "name")
       .lean();
 
+    const getRefId = (ref) => {
+      if (!ref) return null;
+      if (typeof ref === "object" && ref._id) return ref._id.toString();
+      return ref.toString();
+    };
+
     res.json(
       referrals.map((referral) => ({
         patientId: referral.patientId,
-        fromHospital: referral.fromHospitalId?.name || referral.fromHospitalId,
-        toHospital: referral.toHospitalId?.name || referral.toHospitalId,
+        fromHospitalId: getRefId(referral.fromHospitalId),
+        fromHospitalName: referral.fromHospitalId?.name || null,
+        toHospitalId: getRefId(referral.toHospitalId),
+        toHospitalName: referral.toHospitalId?.name || null,
         status: referral.status,
       }))
     );
