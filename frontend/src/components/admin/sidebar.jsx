@@ -1,22 +1,12 @@
 // frontend/src/components/admin/sidebar.jsx
-// MODIFIED — added Appointments nav item
+// MODIFIED — added Emergency Map nav item
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
-  LayoutDashboard,
-  Users,
-  QrCode,
-  Activity,
-  Settings,
-  Phone,
-  LogOut,
-  ArrowRightLeft,
-  Zap,
-  TrendingUp,
-  Package,
-  CalendarCheck,
+  LayoutDashboard, Users, QrCode, Activity, Settings, Phone, LogOut,
+  ArrowRightLeft, Zap, TrendingUp, Package, CalendarCheck, Map,
 } from "lucide-react"
 import { getUser, logout, isLoggedIn, getRole } from "@/lib/api"
 import { api } from "@/lib/api"
@@ -27,8 +17,8 @@ const navItems = [
   { href: "/admin/qr-scanner", label: "QR Scanner", icon: QrCode },
   { href: "/admin/appointments", label: "Appointments", icon: CalendarCheck, badge: "appointments" },
   { href: "/admin/referrals", label: "Referrals", icon: ArrowRightLeft, badge: "referrals" },
+  { href: "/admin/emergency-map", label: "Emergency Map", icon: Map },
   { href: "/admin/surge", label: "Surge Intel", icon: Zap },
-  { href: "/admin/predictions", label: "Predictions", icon: TrendingUp },
   { href: "/admin/inventory", label: "Inventory", icon: Package },
   { href: "/admin/resources", label: "Resources", icon: Activity },
 ]
@@ -62,21 +52,16 @@ export function AdminSidebar() {
       ])
       setPendingCount(refData.incomingPending || 0)
       setApptCount(apptData.todayPending || 0)
-    } catch {
-      // silently ignore
-    }
+    } catch { /* ignore */ }
   }
 
-  const getBadgeCount = (badgeKey) => {
-    if (badgeKey === "referrals") return pendingCount
-    if (badgeKey === "appointments") return apptCount
+  const getBadgeCount = (key) => {
+    if (key === "referrals") return pendingCount
+    if (key === "appointments") return apptCount
     return 0
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate("/admin/login")
-  }
+  const handleLogout = () => { logout(); navigate("/admin/login") }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-60 bg-white border-r border-[#E2E8F0] flex flex-col z-10">
@@ -89,7 +74,7 @@ export function AdminSidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 px-3">
+      <nav className="flex-1 px-3 overflow-y-auto">
         <div className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href
@@ -100,9 +85,7 @@ export function AdminSidebar() {
                 to={item.href}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-black text-white"
-                    : "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+                  isActive ? "bg-black text-white" : "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
                 )}
               >
                 <item.icon className="w-5 h-5" />
@@ -121,25 +104,17 @@ export function AdminSidebar() {
         </div>
 
         <div className="mt-8">
-          <p className="px-3 mb-2 text-xs font-medium text-[#64748B] uppercase tracking-wide">
-            Management
-          </p>
+          <p className="px-3 mb-2 text-xs font-medium text-[#64748B] uppercase tracking-wide">Management</p>
           <div className="space-y-1">
             {managementItems.map((item) => {
               const isActive = pathname === item.href
               return (
-                <Link
-                  key={item.href}
-                  to={item.href}
+                <Link key={item.href} to={item.href}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-black text-white"
-                      : "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
-                  )}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
+                    isActive ? "bg-black text-white" : "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+                  )}>
+                  <item.icon className="w-5 h-5" />{item.label}
                 </Link>
               )
             })}

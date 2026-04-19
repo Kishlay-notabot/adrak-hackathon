@@ -1,5 +1,5 @@
 // backend/server.js
-// MODIFIED — added appointment route
+// MODIFIED — added hospital-payment, notification routes
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -24,7 +24,9 @@ app.use("/api/payment", require("./routes/payment"));
 app.use("/api/surge", require("./routes/surge"));
 app.use("/api/resource-requests", require("./routes/resource-request"));
 app.use("/api/access-requests", require("./routes/access-request"));
-app.use("/api/appointments", require("./routes/appointment"));  // NEW
+app.use("/api/appointments", require("./routes/appointment"));
+app.use("/api/hospital-payment", require("./routes/hospital-payment"));  // NEW
+app.use("/api/notifications", require("./routes/notification"));          // NEW
 
 // ── Health check ────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
@@ -41,5 +43,4 @@ mongoose
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err);
-    process.exit(1);
-  });
+  });          // ← was missing

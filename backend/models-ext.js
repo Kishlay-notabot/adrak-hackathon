@@ -1,11 +1,8 @@
 // backend/models-ext.js
-// MODIFIED — added Appointment schema for patient booking system
-// Extends models.js with ResourceRequest + AccessRequest + Appointment
-// New routes import from here: require("../models-ext")
+// MODIFIED — adds HospitalPayment + Appointment schemas
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-// Re-export everything from original models
 const originalModels = require("./models");
 
 // ─── Resource Request (inter-hospital resource sharing) ─────────────
@@ -17,9 +14,9 @@ const resourceRequestSchema = new Schema(
     respondedBy:    { type: Schema.Types.ObjectId, ref: "Admin", default: null },
     type:           { type: String, enum: ["request", "offer"], required: true },
     resourceType:   { type: String, enum: ["beds", "icu_beds", "oxygen", "ventilators", "blood", "staff"], required: true },
-    quantity:        { type: Number, required: true, min: 1 },
+    quantity:       { type: Number, required: true, min: 1 },
     urgency:        { type: String, enum: ["low", "medium", "high", "critical"], default: "medium" },
-    status:         { type: String, enum: ["pending", "accepted", "declined", "cancelled"], default: "pending" },
+    status:         { type: String, enum: ["pending", "accepted", "declined", "cancelled", "paid"], default: "pending" },
     message:        { type: String, trim: true },
     respondedAt:    { type: Date, default: null },
   },
@@ -47,18 +44,14 @@ accessRequestSchema.index({ hospitalId: 1, patientId: 1 });
 // ─── Appointment (patient booking system) ────────────────────────────
 const appointmentSchema = new Schema(
   {
-    patientId:  { type: Schema.Types.ObjectId, ref: "Patient", required: true },
-    hospitalId: { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
-    date:       { type: Date, required: true },       // midnight of appointment day
-    timeSlot:   { type: String, required: true },      // e.g. "09:00", "14:30"
-    reason:     { type: String, trim: true },
-    status: {
-      type: String,
-      enum: ["pending", "confirmed", "cancelled", "completed", "no-show"],
-      default: "pending",
-    },
+    patientId:   { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    hospitalId:  { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    date:        { type: Date, required: true },
+    timeSlot:    { type: String, required: true },
+    reason:      { type: String, trim: true },
+    status:      { type: String, enum: ["pending", "confirmed", "cancelled", "completed", "no-show"], default: "pending" },
     cancelledBy: { type: String, enum: ["patient", "hospital"], default: null },
-    notes:       { type: String, trim: true },         // admin notes
+    notes:       { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -66,9 +59,31 @@ appointmentSchema.index({ hospitalId: 1, date: 1, timeSlot: 1 });
 appointmentSchema.index({ patientId: 1, date: -1 });
 appointmentSchema.index({ hospitalId: 1, status: 1 });
 
+// ─── Hospital Payment (inter-hospital resource payments) ─────────────
+const hospitalPaymentSchema = new Schema(
+  {
+    fromHospitalId:     { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    toHospitalId:       { type: Schema.Types.ObjectId, ref: "Hospital", required: true },
+    resourceRequestId:  { type: Schema.Types.ObjectId, ref: "ResourceRequest", required: true },
+    createdBy:          { type: Schema.Types.ObjectId, ref: "Admin", required: true },
+    razorpayOrderId:    { type: String, required: true, unique: true },
+    razorpayPaymentId:  { type: String, default: null },
+    razorpaySignature:  { type: String, default: null },
+    amount:             { type: Number, required: true },
+    currency:           { type: String, default: "INR" },
+    status:             { type: String, enum: ["created", "paid", "failed"], default: "created" },
+    description:        { type: String },
+    paidAt:             { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+hospitalPaymentSchema.index({ fromHospitalId: 1 });
+hospitalPaymentSchema.index({ resourceRequestId: 1 });
+
 module.exports = {
   ...originalModels,
   ResourceRequest: mongoose.model("ResourceRequest", resourceRequestSchema),
   AccessRequest:   mongoose.model("AccessRequest", accessRequestSchema),
   Appointment:     mongoose.model("Appointment", appointmentSchema),
+  HospitalPayment: mongoose.model("HospitalPayment", hospitalPaymentSchema),
 };

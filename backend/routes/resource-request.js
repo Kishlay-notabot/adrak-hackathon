@@ -1,11 +1,9 @@
 // backend/routes/resource-request.js
-// NEW — inter-hospital resource request/offer system
 const router = require("express").Router();
 const { ResourceRequest, Hospital } = require("../models-ext");
 const { auth, requireRole, requireHospital } = require("../middleware/auth");
 
 // ── POST /api/resource-requests ─────────────────────────────────────
-// Create a resource request or offer to another hospital
 router.post("/", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
     const { toHospitalId, type, resourceType, quantity, urgency, message } = req.body;
@@ -20,7 +18,6 @@ router.post("/", auth, requireRole("admin"), requireHospital, async (req, res) =
     const target = await Hospital.findById(toHospitalId);
     if (!target) return res.status(404).json({ error: "Target hospital not found" });
 
-    // Check for duplicate pending
     const existing = await ResourceRequest.findOne({
       fromHospitalId: req.user.hospitalId,
       toHospitalId,
@@ -156,39 +153,55 @@ router.patch("/:id/cancel", auth, requireRole("admin"), requireHospital, async (
 });
 
 // ── GET /api/resource-requests/nearby-hospitals ──────────────────────
-// Returns hospitals sorted by distance from the requesting hospital
 router.get("/nearby-hospitals", auth, requireRole("admin"), requireHospital, async (req, res) => {
   try {
-    const myHospital = await Hospital.findById(req.user.hospitalId).select("location").lean();
-    if (!myHospital?.location?.coordinates) {
-      // Fallback: return all active hospitals sorted by name
-      const hospitals = await Hospital.find({
-        _id: { $ne: req.user.hospitalId },
-        isActive: true,
-      }).select("name address phone beds location").sort({ name: 1 }).lean();
-      return res.json(hospitals);
-    }
+    const myHospitalId = req.user.hospitalId;
 
-    const [lng, lat] = myHospital.location.coordinates;
-    const hospitals = await Hospital.find({
-      _id: { $ne: req.user.hospitalId },
+    // Step 1: Always get ALL other active hospitals (guaranteed to work)
+    let hospitals = await Hospital.find({
+      _id: { $ne: myHospitalId },
       isActive: true,
-      location: {
-        $near: {
-          $geometry: { type: "Point", coordinates: [lng, lat] },
-          $maxDistance: 100000, // 100km
-        },
-      },
-    }).select("name address phone beds location").lean();
+    })
+      .select("name address phone beds location")
+      .sort({ name: 1 })
+      .lean();
+
+    // Step 2: Try to sort by distance if we have coordinates
+    try {
+      const myHospital = await Hospital.findById(myHospitalId).select("location").lean();
+
+      if (
+        myHospital?.location?.coordinates &&
+        myHospital.location.coordinates.length === 2 &&
+        myHospital.location.coordinates[0] !== 0
+      ) {
+        const [myLng, myLat] = myHospital.location.coordinates;
+
+        const nearbyHospitals = await Hospital.find({
+          _id: { $ne: myHospitalId },
+          isActive: true,
+          location: {
+            $near: {
+              $geometry: { type: "Point", coordinates: [myLng, myLat] },
+              $maxDistance: 200000, // 200km
+            },
+          },
+        })
+          .select("name address phone beds location")
+          .lean();
+
+        if (nearbyHospitals.length > 0) {
+          hospitals = nearbyHospitals;
+        }
+      }
+    } catch (geoErr) {
+      // Geo sort failed (e.g. missing 2dsphere index) — fall back to name-sorted list
+      console.warn("Geo sort skipped:", geoErr.message);
+    }
 
     res.json(hospitals);
   } catch (err) {
-    // If $near fails (no 2dsphere index), fallback
-    const hospitals = await Hospital.find({
-      _id: { $ne: req.user.hospitalId },
-      isActive: true,
-    }).select("name address phone beds location").sort({ name: 1 }).lean();
-    res.json(hospitals);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,19 +1,19 @@
 // frontend/src/pages/admin/Inventory.jsx
-// MODIFIED — added Resource Request/Give tab with nearby hospitals sorted by distance
+// MODIFIED — added inter-hospital Razorpay payment for accepted resource requests
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { AdminNavbar } from "@/components/admin/navbar"
 import { AdminSidebar } from "@/components/admin/sidebar"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Bed, Wind, Users, Package, TrendingUp, AlertTriangle, CheckCircle2,
   Loader2, Save, Sparkles, ChevronRight, X, ArrowRightLeft, Send,
-  MapPin, Search,
+  MapPin, Search, IndianRupee,
 } from "lucide-react"
-import { api, isLoggedIn, getRole } from "@/lib/api"
+import { api, isLoggedIn, getRole, getUser } from "@/lib/api"
 
 const BED_CATEGORIES = [
   { key: "general", label: "General", icon: "🛏️" },
@@ -65,7 +65,8 @@ function timeAgo(d) {
 
 export default function Inventory() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState("inventory") // inventory | requests
+  const user = getUser()
+  const [tab, setTab] = useState("inventory")
   const [hospital, setHospital] = useState(null)
   const [resource, setResource] = useState(null)
   const [beds, setBeds] = useState({})
@@ -73,7 +74,6 @@ export default function Inventory() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
 
-  // Prediction
   const [predicting, setPredicting] = useState(false)
   const [prediction, setPrediction] = useState(null)
 
@@ -90,14 +90,31 @@ export default function Inventory() {
   const [reqSending, setReqSending] = useState(false)
   const [reqError, setReqError] = useState("")
 
+  // Payment state — NEW
+  const [payingId, setPayingId] = useState(null)
+  const [payAmount, setPayAmount] = useState("")
+  const [showPayForm, setShowPayForm] = useState(null) // resource request ID
+  const [payError, setPayError] = useState("")
+  const [paySuccess, setPaySuccess] = useState("")
+
   useEffect(() => {
     if (!isLoggedIn() || getRole() !== "admin") { navigate("/admin/login"); return }
     fetchAll()
+    loadRazorpayScript()
   }, [])
 
   useEffect(() => {
     if (tab === "requests") fetchRequests()
   }, [tab])
+
+  const loadRazorpayScript = () => {
+    if (document.getElementById("razorpay-script")) return
+    const script = document.createElement("script")
+    script.id = "razorpay-script"
+    script.src = "https://checkout.razorpay.com/v1/checkout.js"
+    script.async = true
+    document.body.appendChild(script)
+  }
 
   const fetchAll = async () => {
     setLoading(true)
@@ -191,6 +208,51 @@ export default function Inventory() {
     } catch (err) { console.error(err.message) }
   }
 
+  // ── Payment handler — NEW ──────────────────────────────────────
+  const handlePay = async (resourceRequestId) => {
+    if (!payAmount || parseFloat(payAmount) <= 0) { setPayError("Enter a valid amount"); return }
+    setPayError(""); setPaySuccess(""); setPayingId(resourceRequestId)
+
+    try {
+      const order = await api("/hospital-payment/create-order", {
+        method: "POST",
+        body: JSON.stringify({ resourceRequestId, amount: parseFloat(payAmount) }),
+      })
+
+      const options = {
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: order.toHospital.name,
+        description: `Resource payment`,
+        order_id: order.orderId,
+        prefill: { name: user?.name || "", email: user?.email || "" },
+        theme: { color: "#0F172A" },
+        handler: async (response) => {
+          try {
+            const result = await api("/hospital-payment/verify", {
+              method: "POST",
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            })
+            setPaySuccess(`₹${result.amount} paid to ${result.hospital}!`)
+            setShowPayForm(null); setPayAmount("")
+            fetchRequests()
+          } catch (err) { setPayError("Verification failed: " + err.message) }
+          finally { setPayingId(null) }
+        },
+        modal: { ondismiss: () => { setPayingId(null); setPayError("Payment cancelled.") } },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.on("payment.failed", (r) => { setPayError("Payment failed: " + r.error.description); setPayingId(null) })
+      rzp.open()
+    } catch (err) { setPayError(err.message); setPayingId(null) }
+  }
+
   const filteredNearby = hospitalSearch
     ? nearbyHospitals.filter((h) => h.name.toLowerCase().includes(hospitalSearch.toLowerCase()) || h.address?.city?.toLowerCase().includes(hospitalSearch.toLowerCase()))
     : nearbyHospitals
@@ -238,7 +300,7 @@ export default function Inventory() {
             )}
           </div>
 
-          {/* ── INVENTORY TAB ──────────────────────────────── */}
+          {/* ── INVENTORY TAB ─────────────────────────────── */}
           {tab === "inventory" && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -279,7 +341,6 @@ export default function Inventory() {
                   <Card className="bg-[#0F172A] border-none shadow-sm text-white"><CardContent className="p-5"><p className="text-xs text-white/60 uppercase tracking-wider mb-2">Total Capacity</p><div className="grid grid-cols-2 gap-3"><div><p className="text-2xl font-bold">{BED_CATEGORIES.reduce((s, c) => s + (parseInt(beds[c.key]?.total) || 0), 0)}</p><p className="text-xs text-white/60">Total Beds</p></div><div><p className="text-2xl font-bold">{BED_CATEGORIES.reduce((s, c) => s + (parseInt(beds[c.key]?.available) || 0), 0)}</p><p className="text-xs text-white/60">Available</p></div></div></CardContent></Card>
                 </div>
               </div>
-              {/* Prediction results */}
               {prediction && (
                 <div className="mt-6">
                   <div className="flex items-center justify-between mb-4">
@@ -313,6 +374,12 @@ export default function Inventory() {
           {/* ── REQUEST & GIVE TAB ─────────────────────────── */}
           {tab === "requests" && (
             <div className="space-y-6">
+              {paySuccess && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg">
+                  <CheckCircle2 className="w-4 h-4" />{paySuccess}
+                </div>
+              )}
+
               {/* New Request Form */}
               {showNewRequest && (
                 <Card className="bg-white border-[#E2E8F0] shadow-sm border-l-4 border-l-blue-500">
@@ -324,14 +391,14 @@ export default function Inventory() {
                     {reqError && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">{reqError}</div>}
                     <form onSubmit={handleSendRequest} className="space-y-4">
                       <div>
-                        <Label className="text-sm text-[#0F172A] mb-2 block">Select Hospital (nearest first)</Label>
+                        <Label className="text-sm text-[#0F172A] mb-2 block">Select Hospital ({filteredNearby.length} in network)</Label>
                         <div className="relative mb-2">
                           <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#64748B]" />
                           <Input placeholder="Search hospitals..." value={hospitalSearch} onChange={(e) => setHospitalSearch(e.target.value)} className="h-9 pl-9 border-[#E2E8F0]" />
                         </div>
                         <div className="max-h-40 overflow-y-auto border border-[#E2E8F0] rounded-lg">
                           {filteredNearby.length === 0 ? (
-                            <p className="text-xs text-[#64748B] text-center py-4">No hospitals found</p>
+                            <p className="text-xs text-[#64748B] text-center py-4">No hospitals found in the network. Other hospitals need to register on medflow first.</p>
                           ) : filteredNearby.map((h) => (
                             <button type="button" key={h._id} onClick={() => setReqForm({ ...reqForm, toHospitalId: h._id })}
                               className={`w-full text-left px-3 py-2 text-sm border-b border-[#F1F5F9] last:border-0 transition-colors ${
@@ -364,24 +431,15 @@ export default function Inventory() {
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Quantity</Label>
-                          <Input type="number" min="1" value={reqForm.quantity} onChange={(e) => setReqForm({ ...reqForm, quantity: e.target.value })} className="h-9 border-[#E2E8F0]" />
-                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Quantity</Label><Input type="number" min="1" value={reqForm.quantity} onChange={(e) => setReqForm({ ...reqForm, quantity: e.target.value })} className="h-9 border-[#E2E8F0]" /></div>
                         <div className="space-y-1">
                           <Label className="text-xs">Urgency</Label>
                           <select value={reqForm.urgency} onChange={(e) => setReqForm({ ...reqForm, urgency: e.target.value })} className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 text-sm">
-                            <option value="critical">Critical</option>
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
+                            <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
                           </select>
                         </div>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Message (optional)</Label>
-                        <Input placeholder="Additional details..." value={reqForm.message} onChange={(e) => setReqForm({ ...reqForm, message: e.target.value })} className="h-9 border-[#E2E8F0]" />
-                      </div>
+                      <div className="space-y-1"><Label className="text-xs">Message (optional)</Label><Input placeholder="Additional details..." value={reqForm.message} onChange={(e) => setReqForm({ ...reqForm, message: e.target.value })} className="h-9 border-[#E2E8F0]" /></div>
                       <Button type="submit" disabled={reqSending || !reqForm.toHospitalId} className="w-full bg-black hover:bg-black/90 text-white">
                         {reqSending ? "Sending..." : reqForm.type === "request" ? "Send Request" : "Send Offer"}
                       </Button>
@@ -422,7 +480,7 @@ export default function Inventory() {
                                   <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-600" onClick={() => handleRespond(r._id, "declined")}>Decline</Button>
                                 </div>
                               ) : (
-                                <span className={`text-xs font-medium capitalize ${r.status === "accepted" ? "text-emerald-600" : "text-red-600"}`}>{r.status}</span>
+                                <span className={`text-xs font-medium capitalize ${r.status === "accepted" ? "text-emerald-600" : r.status === "paid" ? "text-blue-600" : "text-red-600"}`}>{r.status}</span>
                               )}
                             </div>
                           ))}
@@ -431,7 +489,7 @@ export default function Inventory() {
                     </CardContent>
                   </Card>
 
-                  {/* Outgoing */}
+                  {/* Outgoing — MODIFIED with Pay button */}
                   <Card className="bg-white border-[#E2E8F0] shadow-sm">
                     <CardHeader className="pb-2"><CardTitle className="text-base font-semibold text-[#0F172A]">Outgoing Requests ({outgoing.filter((r) => r.status === "pending").length} pending)</CardTitle></CardHeader>
                     <CardContent>
@@ -447,13 +505,53 @@ export default function Inventory() {
                                   <p className="text-xs text-[#64748B]">{timeAgo(r.createdAt)}</p>
                                 </div>
                                 <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                                  r.status === "pending" ? "bg-yellow-100 text-yellow-700" : r.status === "accepted" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                                  r.status === "pending" ? "bg-yellow-100 text-yellow-700" :
+                                  r.status === "accepted" ? "bg-green-100 text-green-700" :
+                                  r.status === "paid" ? "bg-blue-100 text-blue-700" :
+                                  "bg-red-100 text-red-700"
                                 }`}>{r.status}</span>
                               </div>
                               <p className="text-sm text-[#0F172A]">{r.type === "request" ? "Requested" : "Offered"}: <strong>{r.quantity} {RESOURCE_TYPES.find((t) => t.value === r.resourceType)?.label || r.resourceType}</strong></p>
-                              {r.status === "pending" && (
-                                <Button size="sm" variant="outline" className="h-7 text-xs mt-2 border-[#E2E8F0]" onClick={() => handleCancel(r._id)}>Cancel</Button>
-                              )}
+
+                              {/* Actions */}
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {r.status === "pending" && (
+                                  <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => handleCancel(r._id)}>Cancel</Button>
+                                )}
+                                {r.status === "accepted" && (
+                                  <>
+                                    {showPayForm === r._id ? (
+                                      <div className="w-full mt-1 p-2.5 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
+                                        {payError && <p className="text-xs text-red-600">{payError}</p>}
+                                        <div className="flex items-center gap-2">
+                                          <div className="relative flex-1">
+                                            <IndianRupee className="w-3.5 h-3.5 absolute left-2 top-2 text-[#64748B]" />
+                                            <Input type="number" min="1" step="0.01" placeholder="Amount"
+                                              value={payAmount} onChange={(e) => { setPayAmount(e.target.value); setPayError("") }}
+                                              className="h-8 pl-7 text-xs border-blue-200" />
+                                          </div>
+                                          <Button size="sm" className="h-8 text-xs bg-[#0F172A] text-white px-3"
+                                            disabled={payingId === r._id}
+                                            onClick={() => handlePay(r._id)}>
+                                            {payingId === r._id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Pay"}
+                                          </Button>
+                                          <button onClick={() => { setShowPayForm(null); setPayAmount(""); setPayError("") }} className="text-[#64748B]"><X className="w-4 h-4" /></button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button size="sm" className="h-7 text-xs bg-[#0F172A] hover:bg-[#1E293B] text-white"
+                                        onClick={() => { setShowPayForm(r._id); setPayError(""); setPaySuccess("") }}>
+                                        <IndianRupee className="w-3 h-3 mr-1" /> Pay Hospital
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                                {r.status === "paid" && (
+                                  <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Payment complete
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
