@@ -104,6 +104,10 @@ export default function PatientLoginPage() {
             </form>
 
             <div className="mt-6 text-center text-sm text-[#64748B]">
+              Demo credentials:{" "}
+              <span className="text-[#2563EB] font-medium">Email: patient1@gmail.com | Password: patient</span>
+            </div>
+            <div className="mt-3 text-center text-sm text-[#64748B]">
               Don't have an account?{" "}
               <Link to="/patient/register" className="text-[#2563EB] font-medium hover:underline">Register</Link>
             </div>

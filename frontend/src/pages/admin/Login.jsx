@@ -104,6 +104,10 @@ export default function AdminLoginPage() {
             </form>
 
             <div className="mt-6 text-center text-sm text-[#64748B]">
+              Demo credentials:{" "}
+              <span className="text-[#0F172A] font-medium">Email: seedadmin@hdhi-seed.com | Password: admin123</span>
+            </div>
+            <div className="mt-3 text-center text-sm text-[#64748B]">
               Don't have an account?{" "}
               <Link to="/admin/register" className="text-[#0F172A] font-medium hover:underline">Register</Link>
             </div>
